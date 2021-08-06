@@ -1,3 +1,8 @@
+/* 
+ *  Tested working with BivalveBit RevB board
+ *  
+ */
+
 // Use this with the serial plotter to just see the proximity channel output
 #include <Adafruit_VCNL4040.h>
 
