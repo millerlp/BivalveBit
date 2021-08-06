@@ -22,8 +22,8 @@
  */
 
 #include "Arduino.h"
-#define REDLED 8
-#define GRNLED 11
+#define REDLED 11
+#define GRNLED 8
  
 void setup() {
   pinMode(REDLED, OUTPUT);
