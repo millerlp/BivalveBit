@@ -60,6 +60,19 @@ void setup() {
     }                // of if-then oscillator didn't start
   }                  // of while the oscillator is off
 
+  // Turn on battery backup, default is off
+  MCP7940.setBattery(true); // enable battery backup mode
+  Serial.print("Battery Backup mode is ");
+  if (MCP7940.getBattery()) {
+   Serial.println("enabled.");
+  } else {
+   Serial.println("disabled.");
+  }
+  
+  // Turn on the square wave output pin of the RTC chip
+  MCP7940.setSQWSpeed(3); // set SQW frequency to 32768 Hz
+  MCP7940.setSQWState(true); // turn on the square wave output pin
+
 }
 
 void loop() {
