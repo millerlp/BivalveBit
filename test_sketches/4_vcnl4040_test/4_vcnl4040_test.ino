@@ -7,7 +7,7 @@
  */
 
 // Use this with the serial plotter to just see the proximity channel output
-#include <Adafruit_VCNL4040.h> // https://github.com/adafruit/Adafruit_VCNL4040
+#include <Adafruit_VCNL4040.h> // https://github.com/adafruit/Adafruit_VCNL4040 & https://github.com/adafruit/Adafruit_BusIO
 
 Adafruit_VCNL4040 vcnl4040 = Adafruit_VCNL4040();
 
