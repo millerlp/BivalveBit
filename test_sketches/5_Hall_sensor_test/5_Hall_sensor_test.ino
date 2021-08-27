@@ -1,8 +1,8 @@
 /* 5_Hall_sensor_test.ino
  *  
- *  TODO: test out putting voltage regulator to sleep
  *  TODO: figure out why sensor is reading high at rest (~623)
  *  
+ *  Tested with RevB hardware, on 3V3 supply and 3.9V LiIon battery
  *  
  */
 
@@ -20,20 +20,20 @@ void setup() {
   digitalWrite(REDLED, HIGH); // set high to turn OFF
   digitalWrite(GRNLED, HIGH); // set high to turn OFF
   pinMode(VREG_EN, OUTPUT);
-  digitalWrite(VREG_EN, HIGH); // set low to turn off, high to turn on
+  digitalWrite(VREG_EN, HIGH); // set low to turn off, high to turn on (~150usec to wake)
   pinMode(HALL_SLEEP, OUTPUT);
-  digitalWrite(HALL_SLEEP, HIGH); // set high to wake
+  digitalWrite(HALL_SLEEP, LOW); // set high to wake, set low to sleep (~60usec to wake)
   analogReference(EXTERNAL); // using voltage regulator value on external pin (will this fail if vreg is off?)
   pinMode(ANALOG_IN, INPUT); // Hall sensor input channel
   Serial.begin(57600);
   // Wait until serial port is opened
   while (!Serial) { delay(1); }
-  Serial.print("Hello");
+//  Serial.print("Hello");
 
 }
 
 
-
+// Function to take a few readings from hall sensor and average them
 unsigned int readHall(byte ANALOG_IN){
   unsigned int rawAnalog = 0;
   analogRead(ANALOG_IN); // throw away 1st reading
@@ -47,11 +47,15 @@ unsigned int readHall(byte ANALOG_IN){
   return rawAnalog;
 }
 
+//-----------------------------------------------
+// Main loop
 void loop() {
-//  digitalWrite(VREG_EN, HIGH); // turn on voltage regulator
-//  delayMicroseconds(250); // give voltage regulator time to turn on
+  digitalWrite(VREG_EN, HIGH); // turn on voltage regulator
+  digitalWrite(HALL_SLEEP, HIGH); // turn on hall effect sensor
+  delayMicroseconds(250); // give voltage regulator time to turn on
   unsigned int HallValue = readHall(ANALOG_IN);
-//  digitalWrite(VREG_EN, LOW); // turn voltage regulator off again
+  digitalWrite(VREG_EN, LOW); // turn voltage regulator off again
+  digitalWrite(HALL_SLEEP, LOW); // put hall sensor to sleep
   Serial.println(HallValue);
   digitalWrite(GRNLED,!digitalRead(GRNLED));
   delay(200);
