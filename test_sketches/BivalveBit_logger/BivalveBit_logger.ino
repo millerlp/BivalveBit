@@ -87,7 +87,7 @@ void setup() {
   digitalWrite(REDLED, HIGH); // set high to turn OFF
   digitalWrite(GRNLED, HIGH); // set high to turn OFF
   pinMode(VREG_EN, OUTPUT);
-  digitalWrite(VREG_EN, LOW); // set low to turn off, high to turn on (~150usec to wake)
+  digitalWrite(VREG_EN, HIGH); // set low to turn off, high to turn on (~150usec to wake)
   pinMode(HALL_SLEEP, OUTPUT);
   digitalWrite(HALL_SLEEP, LOW); // set high to wake, set low to sleep (~60usec to wake)
   analogReference(EXTERNAL); // using voltage regulator value on external pin
@@ -97,7 +97,8 @@ void setup() {
   digitalWrite(BATT_MONITOR_EN, LOW); // pull low to turn off battery monitor circuit
 
   Serial.begin(57600);
-  while (!Serial) { delay(1); } // Wait until serial port is opened
+//  while (!Serial) { delay(1); } // Wait until serial port is opened
+  Serial.println("Hi");
 
   //---------------------------------------------------------
   // OLED display setup
@@ -149,13 +150,15 @@ void setup() {
   digitalWrite(GRNLED,LOW);
   delay(100);
   digitalWrite(GRNLED,HIGH);
-  delay(100);
+  delay(500);
 
   //------------------------------------------------------------------
   // Enable 3.0V voltage regulator so that you can talk to the heart and gape sensors
   digitalWrite(VREG_EN, HIGH); // Set high to turn on
   delayMicroseconds(250); // Give at least 150us for regulator to turn on
-
+  
+  oled.home();
+  oled.clear();
   //------------------------------------------------------------------
   // Start up VCNL4040 proximity sensor (heart sensor)
   if (!vcnl4040.begin()) {
@@ -164,8 +167,7 @@ void setup() {
     delay(500);
     digitalWrite(REDLED, HIGH);
     delay(100);
-    oled.home();
-    oled.clear();
+
     oled.println("Heart sensor fail");
   } else {
     oled.println("Heart sensor on");
@@ -186,6 +188,7 @@ void setup() {
   // VCNL4040_PROXIMITY_INTEGRATION_TIME_8T raises the pulse length (higher LED output) in
   // combination with the LED_CURRENT setting.
   vcnl4040.setProximityIntegrationTime(VCNL4040_PROXIMITY_INTEGRATION_TIME_1T); // 1T,1_5T,2T,2_5T,3T,3_5T,4T,8T
+  delay(200);
   //----------------------------------------------------
 
   //--------------------------------------------------------------------------
@@ -207,7 +210,7 @@ void setup() {
       digitalWrite(REDLED,HIGH);
       delay(100);
     }
-
+    delay(400);
     //-------------------------------------------------------------------
     // Initialize Hall sensor
     digitalWrite(HALL_SLEEP, HIGH); // turn on hall effect sensor
@@ -231,7 +234,7 @@ void setup() {
       digitalWrite(REDLED, HIGH);
       delay(100);
     }
-
+    delay(500);
 
     //------------------------------------------------------------
     // Battery voltage circuit test
@@ -239,10 +242,14 @@ void setup() {
     oled.print("Battery: ");
     oled.print(batteryVolts,3);
     oled.println("V");
+    Serial.print("Battery: ");
+    Serial.print(batteryVolts,3);
+    Serial.println("V");
+    delay(500);
 
     //---------------------------------------
     // Voltage regulator can be turned off again
-    digitalWrite(VREG_EN, LOW); // set low to turn off
+//    digitalWrite(VREG_EN, LOW); // set low to turn off
 
 
 }   // end of setup loop
@@ -251,7 +258,41 @@ void setup() {
 //-------------------------------------------------------------
 void loop() {
 
-
+  
+  digitalWrite(GRNLED,!digitalRead(GRNLED));
+  delay(500);
+  
+  digitalWrite(HALL_SLEEP, HIGH); // turn on hall effect sensor
+  delayMicroseconds(50);
+  HallValue = readHall(ANALOG_IN); // Function in BivalveBit_lib 
+  digitalWrite(HALL_SLEEP, LOW); // put hall sensor to sleep
+  Serial.print("Hall: ");
+  Serial.print(HallValue);
+  Serial.print("  VCNL: ");
+  unsigned int Prox = vcnl4040.getProximity();
+  Serial.print(Prox);
+  Serial.print("  temp: ");
+  float tempC = TMP117sensor.readTempC();
+  // Print temperature in °C
+  Serial.print(tempC);
+  Serial.print("C");
+  batteryVolts = readBatteryVoltage(BATT_MONITOR_EN,BATT_MONITOR,dividerRatio,refVoltage);
+  Serial.print("  Battery: ");
+  Serial.print(batteryVolts,3);
+  Serial.println("V");
+  Serial.println();
+  
+  oled.home();
+  oled.clear();
+  oled.print("Hall: ");
+  oled.println(HallValue);
+  oled.print("VCNL: ");
+  oled.println(Prox);
+  oled.print("temp: ");
+  oled.println(tempC,2);
+  oled.print("Battery: ");
+  oled.println(batteryVolts,3);
+  
 
 
 }
