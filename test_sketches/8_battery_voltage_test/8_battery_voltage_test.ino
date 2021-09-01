@@ -25,7 +25,8 @@ byte BATT_MONITOR_EN = 9; // digital output channel to turn on battery voltage c
 byte BATT_MONITOR = A1;  // analog input channel to sense battery voltage
 
 float dividerRatio = 2; // Ratio of voltage divider (47k + 47k) / 47k = 2
-float refVoltage = 3.16; // Voltage at AREF pin on ATmega microcontroller, measured per board
+float refVoltage = 3.00; // Voltage at AREF pin on ATmega microcontroller, measured per board
+//float refVoltage = 2.5; // Internal 2.5V voltage reference value (INTERNAL2V5)
 float batteryVolts = 0; // Estimated battery voltage returned from readBatteryVoltage function
 
 
@@ -67,6 +68,7 @@ void setup() {
   pinMode(VREG_EN, OUTPUT);
   digitalWrite(VREG_EN, HIGH); // set low to turn off, high to turn on (~150usec to wake)
   analogReference(EXTERNAL); // using voltage regulator value on external pin (will this fail if vreg is off?)
+//  analogReference(INTERNAL2V5); // using internal bandgap 2.5V VREF value
   // Battery monitor pins
   pinMode(BATT_MONITOR, INPUT); // Battery voltage input channel
   pinMode(BATT_MONITOR_EN, OUTPUT); // Battery monitor enable pin
