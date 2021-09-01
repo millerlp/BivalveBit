@@ -15,7 +15,7 @@
  *   Select that device in the Tools>Port menu
  *   Under Tools>Programmer choose Atmel mEDBG (ATmega32U4)
  *   Select Tools>Board>MegaCoreX>Atmega4808
- *   Clock internal 16MHz, BOD 2.6V, Pinout 32 pin standard,
+ *   Clock internal 8MHz, BOD 2.6V, Pinout 32 pin standard,
  *   Reset pin "Reset", Bootloader "Optiboot (UART0 default pins)"
  *   Then hit burn bootloader, it should upload 512k bootloader
  * 
