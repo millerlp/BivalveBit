@@ -1,6 +1,6 @@
-/* 5_Hall_sensor_test.ino
+/* 6_Hall_sensor_test.ino
  *  
- *  TODO: figure out why sensor is reading high at rest (~623)
+ *  
  *  
  *  Tested with RevB hardware, on 3V3 supply and 3.9V LiIon battery
  *  
