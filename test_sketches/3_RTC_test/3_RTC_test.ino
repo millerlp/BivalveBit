@@ -26,6 +26,7 @@
 
 #define REDLED 8
 #define GRNLED 11
+#define VREG_EN 24  // voltage regulator enable
 const uint32_t SERIAL_SPEED{57600};     // Set the baud rate for Serial I/O
 const uint8_t  SPRINTF_BUFFER_SIZE{32};  // Buffer size for sprintf()
 
@@ -42,12 +43,15 @@ void setup() {
   pinMode(GRNLED, OUTPUT);
   digitalWrite(REDLED, HIGH); // set high to turn OFF
   digitalWrite(GRNLED, HIGH); // set high to turn OFF
-
+  pinMode(VREG_EN, OUTPUT);
+  digitalWrite(VREG_EN, HIGH); // set low to turn off, high to turn on (~150usec to wake)
+  
   Serial.begin(57600);
   delay(100);
-  Serial.println("Hello");
+  Serial.println("Clock check");
+  delay(20);
   while (!MCP7940.begin()) {  // Initialize RTC communications
-    Serial.println(F("Unable to find MCP7940M. Checking again in 3s."));  // Show error text
+    Serial.println(F("Unable to find MCP7940. Checking again in 3s."));  // Show error text
     delay(3000);                                                          // wait a second
   }  // of loop until device is located
   Serial.println(F("MCP7940 initialized."));
@@ -72,6 +76,8 @@ void setup() {
   // Turn on the square wave output pin of the RTC chip
   MCP7940.setSQWSpeed(3); // set SQW frequency to 32768 Hz
   MCP7940.setSQWState(true); // turn on the square wave output pin
+
+//  digitalWrite(VREG_EN, LOW); // turn off
 
 }
 
