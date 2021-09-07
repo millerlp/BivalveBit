@@ -7,7 +7,7 @@
 #include <Wire.h>  // built in library, for I2C communications
 #include "SSD1306Ascii.h" // https://github.com/greiman/SSD1306Ascii
 #include "SSD1306AsciiWire.h" // https://github.com/greiman/SSD1306Ascii
-#include "MCP7940.h"  // https://github.com/Zanduino/MCP7940
+#include "MCP7940.h"  // https://github.com/Zanduino/MCP7940  Real time clock
 #include <Adafruit_VCNL4040.h> // https://github.com/adafruit/Adafruit_VCNL4040 & https://github.com/adafruit/Adafruit_BusIO
 #include <SparkFun_TMP117.h> // https://github.com/sparkfun/SparkFun_TMP117_Arduino_Library
 #include "BivalveBit_lib.h" // https://github.com/millerlp/BivalveBit_lib
@@ -22,6 +22,8 @@ const uint8_t SD_CHIP_SELECT = 7;
 #define SCK 6
 SdFat sd;  // sd card object
 bool SDfailFlag = false;
+SdFile logfile;  // for sd card, this is the file object to be written to
+char filename[] = "YYYYMMDD_HHMM_00_SN00.csv";
 
 /**********************************************************
  * Create VCNL4040 object
@@ -43,7 +45,7 @@ TMP117 TMP117sensor; // Initalize sensor
 unsigned int HallValue = 0; // Variable for Hall sensor reading
 
 /***************************************************************************************************
-** Declare global variables and instantiate classes for MCP7940 clock chip                                            **
+**  MCP7940 real time clock chip                                            **
 ***************************************************************************************************/
 const uint32_t SERIAL_SPEED{57600};     // Set the baud rate for Serial I/O
 const uint8_t  SPRINTF_BUFFER_SIZE{32};  // Buffer size for sprintf()
@@ -108,7 +110,7 @@ void setup() {
   oled.setFont(Adafruit5x7);    
   oled.clear(); 
   oled.home();
-  oled.println("Hello");
+//  oled.println("Hello");
 
   
   //--------------------------------------------------------------------------
@@ -131,6 +133,9 @@ void setup() {
   MCP7940.setSQWState(true); // turn on the square wave output pin
   newtime = MCP7940.now();
   // TODO: Print date and time to OLED at startup
+  printTimeOLED(newtime, oled);
+  oled.println();
+  delay(2000);
   
   //----------------------------------------------------------
   // SD card initialization
@@ -262,10 +267,11 @@ void loop() {
   digitalWrite(GRNLED,!digitalRead(GRNLED));
   delay(500);
   
-  digitalWrite(HALL_SLEEP, HIGH); // turn on hall effect sensor
-  delayMicroseconds(50);
-  HallValue = readHall(ANALOG_IN); // Function in BivalveBit_lib 
-  digitalWrite(HALL_SLEEP, LOW); // put hall sensor to sleep
+//  digitalWrite(HALL_SLEEP, HIGH); // turn on hall effect sensor
+//  delayMicroseconds(50);
+//  HallValue = readHall(ANALOG_IN); // Function in BivalveBit_lib 
+  HallValue = readWakeHall(ANALOG_IN, HALL_SLEEP); // Function in BivalveBit_lib 
+//  digitalWrite(HALL_SLEEP, LOW); // put hall sensor to sleep
   Serial.print("Hall: ");
   Serial.print(HallValue);
   Serial.print("  VCNL: ");
