@@ -22,10 +22,10 @@
  */
 
 #include "Arduino.h"
-#include <MCP7940.h>  // https://github.com/Zanduino/MCP7940
+#include <MCP7940.h>  // https://github.com/Zanduino/MCP7940  Address 0x6F
 
-#define REDLED 8
-#define GRNLED 11
+#define REDLED 11
+#define GRNLED 8
 #define VREG_EN 24  // voltage regulator enable
 const uint32_t SERIAL_SPEED{57600};     // Set the baud rate for Serial I/O
 const uint8_t  SPRINTF_BUFFER_SIZE{32};  // Buffer size for sprintf()
@@ -43,9 +43,11 @@ void setup() {
   pinMode(GRNLED, OUTPUT);
   digitalWrite(REDLED, HIGH); // set high to turn OFF
   digitalWrite(GRNLED, HIGH); // set high to turn OFF
-  pinMode(VREG_EN, OUTPUT);
-  digitalWrite(VREG_EN, HIGH); // set low to turn off, high to turn on (~150usec to wake)
-  
+//  pinMode(2, OUTPUT);
+//  digitalWrite(2, HIGH); // reset SDA pin 
+//  pinMode(VREG_EN, OUTPUT);
+//  digitalWrite(VREG_EN, HIGH); // set low to turn off, high to turn on (~150usec to wake)
+  Wire.begin();
   Serial.begin(57600);
   delay(100);
   Serial.println("Clock check");
@@ -93,7 +95,7 @@ void loop() {
             now.second());                         // date/time with leading zeros
     Serial.println(inputBuffer);                   // Display the current date/time
     secs = now.second();                           // Set the counter variable
-    digitalWrite(REDLED, !(digitalRead(REDLED)));   // Toggle the LED
+//    digitalWrite(REDLED, !(digitalRead(REDLED)));   // Toggle the LED
     digitalWrite(GRNLED, !(digitalRead(GRNLED)));   // Toggle the LED
   }                                                // of if the seconds have changed
   
