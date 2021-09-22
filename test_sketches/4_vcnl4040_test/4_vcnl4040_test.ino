@@ -13,12 +13,16 @@ Adafruit_VCNL4040 vcnl4040 = Adafruit_VCNL4040();
 
 #define REDLED 11
 #define GRNLED 8
+#define VREG_EN 24  // voltage regulator enable
 
 void setup() {
   pinMode(REDLED, OUTPUT);
   pinMode(GRNLED, OUTPUT);
   digitalWrite(REDLED, HIGH); // set high to turn OFF
   digitalWrite(GRNLED, HIGH); // set high to turn OFF
+  pinMode(VREG_EN, OUTPUT);
+  digitalWrite(VREG_EN, HIGH); // set low to turn off, high to turn on (~150usec to wake)
+  
   Serial.begin(57600);
   // Wait until serial port is opened
   while (!Serial) { delay(1); }
