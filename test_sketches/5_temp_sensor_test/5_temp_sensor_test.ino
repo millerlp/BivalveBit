@@ -27,6 +27,7 @@ void setup() {
   digitalWrite(GRNLED, HIGH); // set high to turn OFF
   pinMode(VREG_EN, OUTPUT);
   digitalWrite(VREG_EN, HIGH); // set low to turn off, high to turn on (~150usec to wake)
+  delayMicroseconds(500);
   if (TMP117sensor.begin() == true) // Function to check if the sensor will correctly self-identify with the proper Device ID/Address
   {
     Serial.println("Begin");
