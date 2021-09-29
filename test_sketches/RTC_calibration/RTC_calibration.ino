@@ -21,24 +21,68 @@
  *  TODO: RTC interrupt counter is running at 1/2 speed (2 seconds)
  */
 
+#include <MCP7940.h>  // https://github.com/Zanduino/MCP7940  Address 0x6F
+
 
 volatile uint16_t RTCticks = 0; // Used to count RTC interrupts
 volatile uint16_t GPSticks = 0; // Used to count GPSticks
-
+int8_t trimValue = 20; // Signed crystal frequency trimming value -127 to +127
 #define GPSinput 14 // Take input on PD2, digital pin 14
 #define GRNLED 8 
 
-#define RTC_EXAMPLE_PERIOD (32767)
+#define RTC_EXAMPLE_PERIOD (32767) // Set how high the RTC will run before overflow (max 32767)
+
+MCP7940_Class MCP7940;                           // Create an instance of the MCP7940
+const uint8_t  SPRINTF_BUFFER_SIZE{32};  // Buffer size for sprintf()
+char          inputBuffer[SPRINTF_BUFFER_SIZE];  // Buffer for sprintf()/sscanf()
 
 void setup() {
   Serial.begin(57600);
   Serial.println("Hello");
-  Serial.println("Waiting for GPS");
+
+  Wire.begin();
   pinMode(GPSinput, INPUT);
   pinMode(GRNLED, OUTPUT);
   digitalWrite(GRNLED, HIGH);
   pinMode(17, OUTPUT);  // PD5 = D17
+  Serial.println("Clock check");
+  delay(20);
+  while (!MCP7940.begin()) {  // Initialize RTC communications
+    Serial.println(F("Unable to find MCP7940. Checking again in 3s."));  // Show error text
+    delay(3000);                                                          // wait a second
+  }  // of loop until device is located
+  Serial.println(F("MCP7940 initialized."));
+    while (!MCP7940.deviceStatus()) {  // Turn oscillator on if necessary
+    Serial.println(F("Oscillator is off, turning it on."));
+    bool deviceStatus = MCP7940.deviceStart();  // Start oscillator and return state
+    if (!deviceStatus) {                        // If it didn't start
+      Serial.println(F("Oscillator did not start, trying again."));  // Show error and
+      delay(1000);                                                   // wait for a second
+    }                // of if-then oscillator didn't start
+  }                  // of while the oscillator is off
 
+  // Turn on battery backup, default is off
+  MCP7940.setBattery(true); // enable battery backup mode
+  // Turn on the square wave output pin of the RTC chip
+  MCP7940.setSQWSpeed(3); // set SQW frequency to 32768 Hz
+  MCP7940.setSQWState(true); // turn on the square wave output pin
+  Serial.println("32.768kHz clock started");
+
+  DateTime       now = MCP7940.now();  // get the current time
+  sprintf(inputBuffer, "%04d-%02d-%02d %02d:%02d:%02d",
+            now.year(),  // Use sprintf() to pretty print
+            now.month(), now.day(), now.hour(), now.minute(),
+            now.second());                         // date/time with leading zeros
+  Serial.println(inputBuffer);                   // Display the current date/time
+
+
+  MCP7940.calibrate(trimValue); 
+  int8_t newTrimValue = MCP7940.getCalibrationTrim();
+  Serial.print("Trim value: ");
+  Serial.println(newTrimValue);
+  
+  
+  Serial.println("Waiting for GPS");
   RTC_init();
   delay(150);
   // Enable interrupt on the GPS input pin
@@ -56,11 +100,13 @@ void setup() {
   
 } // end of setup
 
+
+//---------------------------------------------------------------------------------------
 void loop() {
   // Most action should be in the interrupt service routines, until GPSticks gets to 10
  
   if (GPSticks >= 10){
-   uint16_t rtcRawCount = RTC.CNTL; // Read the current count value in the RTC counter 
+   uint16_t rtcRawCount = RTC.CNT; // Read the current count value in the RTC counter 
 
     Serial.print("GPS: ");
     Serial.print(GPSticks);
