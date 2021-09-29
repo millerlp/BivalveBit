@@ -28,6 +28,8 @@ volatile uint16_t GPSticks = 0; // Used to count GPSticks
 #define GPSinput 14 // Take input on PD2, digital pin 14
 #define GRNLED 8 
 
+#define RTC_EXAMPLE_PERIOD (32767)
+
 void setup() {
   Serial.begin(57600);
   Serial.println("Hello");
@@ -68,12 +70,12 @@ void loop() {
     Serial.println(rtcRawCount);
 
    GPSticks = 0; // Reset
-//   RTCticks = 0; // Reset
-//   rtcRawCount = 0; // Reset
+   RTCticks = 0; // Reset
+   rtcRawCount = 0; // Reset
    while (GPSticks < 0){
     // kill time here until GPS ticks again
    }
-   RTC.CNT = 0; // reset RTC counter
+//   RTC.CNT = 0; // reset RTC counter
    RTCticks = 0;
    GPSticks = 0; // reset again
   } // end of if(GPSticks == 10)
@@ -87,8 +89,9 @@ ISR(RTC_CNT_vect)
   {
     RTC.INTFLAGS = RTC_OVF_bm; // Clear the interrupt by writing '1' to the overflow bit in RTC.INTFLAGS
     RTCticks++; // increment RTCticks counter
-    digitalWriteFast(GRNLED, !digitalRead(GRNLED));
-    digitalWriteFast(17, !digitalRead(17));
+    PORTC.IN |= PIN0_bm;  // Toggle pin PC0 attached to green led
+    PORTD.IN |= PIN5_bm; // Toggle pin PD5 also
+
   }
 
 //-------------------------------------------------------------------------
@@ -137,6 +140,8 @@ void RTC_init(void){
   {
     ;
   }
+  /* Set period */
+  RTC.PER = RTC_EXAMPLE_PERIOD;
   // Select the clock source in the CLKSEL register 
   RTC.CLKSEL = RTC_CLKSEL_TOSC32K_gc; // 0x02 selects external clock on TOSC1
   // Set the RTC prescaler divider, and set it to run in Standby mode, and Enable the RTC
