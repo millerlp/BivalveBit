@@ -22,19 +22,28 @@
  */
 
 #include <MCP7940.h>  // https://github.com/Zanduino/MCP7940  Address 0x6F
+#include <Wire.h>
+#include "SSD1306Ascii.h" // https://github.com/greiman/SSD1306Ascii
+#include "SSD1306AsciiWire.h" // https://github.com/greiman/SSD1306Ascii
 
 
-volatile uint16_t RTCticks = 0; // Used to count RTC interrupts
-volatile uint16_t GPSticks = 0; // Used to count GPSticks
-uint16_t TimeIntervalSeconds = 120; // Testing interval - use 60 seconds or greater to allow 
+volatile unsigned long RTCticks = 0; // Used to count RTC interrupts
+volatile unsigned long GPSticks = 0; // Used to count GPSticks
+volatile uint16_t rtcRawCount; // Used to count clock cycles on 32.768kHz RTC counter
+unsigned long oldGPSticks = 0;
+uint16_t TimeIntervalSeconds = 30; // Testing interval - use 60 seconds or greater to allow 
                                    // for the clock trimming to be effective
-int8_t trimValue = 127; // Signed crystal frequency trimming value -127 to +127
+                                   
+int8_t trimValue = 0; // Signed crystal frequency trimming value -127 to +127
 long oldticks = 0;
 
 #define GPSinput 14 // Take input on PD2, digital pin 14
 #define GRNLED 8 
 
 #define RTC_EXAMPLE_PERIOD (32767) // Set how high the RTC will run before overflow (max 32767)
+
+SSD1306AsciiWire oled; // create OLED display object, using I2C Wire1 port
+#define I2C_ADDRESS1 0x3C // for OLED. DIY mall units list 0x78 as address, but need 0x3C to work here
 
 MCP7940_Class MCP7940;                           // Create an instance of the MCP7940
 const uint8_t  SPRINTF_BUFFER_SIZE{32};  // Buffer size for sprintf()
@@ -51,6 +60,12 @@ void setup() {
   pinMode(17, OUTPUT);  // PD5 = D17
   pinMode(16, OUTPUT);  // PD4 = D16
   Serial.println("Clock check");
+
+  oled.begin(&Adafruit128x32, I2C_ADDRESS1);  
+  oled.setFont(Adafruit5x7);    
+  oled.clear(); 
+  oled.home();
+  
   delay(20);
   while (!MCP7940.begin()) {  // Initialize RTC communications
     Serial.println(F("Unable to find MCP7940. Checking again in 3s."));  // Show error text
@@ -79,7 +94,7 @@ void setup() {
             now.month(), now.day(), now.hour(), now.minute(),
             now.second());                         // date/time with leading zeros
   Serial.println(inputBuffer);                   // Display the current date/time
-
+  oled.print(inputBuffer);
 
   MCP7940.calibrate(trimValue); 
   int8_t newTrimValue = MCP7940.getCalibrationTrim();
@@ -102,6 +117,7 @@ void setup() {
             // 2 RTC clock cycles to update this register (Datasheet section 22.13.9)
   RTCticks = 0; // reset
   GPSticks = 0; // reset
+  oldGPSticks = 0; // reset
   
 } // end of setup
 
@@ -109,17 +125,17 @@ void setup() {
 //---------------------------------------------------------------------------------------
 void loop() {
   // Most action should be in the interrupt service routines, until GPSticks gets to 10
- 
-  if (GPSticks >= TimeIntervalSeconds){
-    // As soon as GPSticks exceeds the target interval, grab copies of
-    // the numer of crystal ticks in the RTC.CNT register, along with the
+  
+  if ( (GPSticks - oldGPSticks) >= TimeIntervalSeconds){
+    // As soon as GPSticks exceeds the target interval, grab copies of the
     // current full RTCticks (measured seconds), to compare to the GPSticks
-   uint16_t rtcRawCount = RTC.CNT; // Read the current count value in the RTC counter
-   RTC.CNT = 0; // immediately reset RTC counter
-   uint8_t currRTCticks = RTCticks; // store elapsed seconds for printing
-   uint8_t currGPSticks = GPSticks; // store elapsed seconds for printing
-   GPSticks = 0; // Reset the seconds count from the GPS
-   RTCticks = 0; // Reset the seconds count from the RTC
+//   uint16_t rtcRawCount = RTC.CNT; // Read the current count value in the RTC counter
+
+   unsigned long currRTCticks = RTCticks; // store elapsed seconds for printing
+   unsigned long currGPSticks = GPSticks; // store elapsed seconds for printing
+   oldGPSticks = currGPSticks; // store GPSticks value for comparison above
+//   GPSticks = 0; // Reset the seconds count from the GPS
+//   RTCticks = 0; // Reset the seconds count from the RTC
 
    // Print the results while we have the rest of the second to kill
     Serial.print("GPS: ");
@@ -131,6 +147,18 @@ void loop() {
     Serial.print("\t diff: ");
     Serial.println((long)rtcRawCount - oldticks);
     PORTD.IN |= PIN4_bm; // Toggle pin PD4 also
+    
+    oled.clear();
+    oled.home();
+    oled.print("GPS secs: ");
+    oled.println(currGPSticks);
+    oled.print("RTC secs: ");
+    oled.println(currRTCticks);
+    oled.print("GPS - RTC:");
+    oled.println(currGPSticks - currRTCticks);
+    oled.print("tick diff: ");
+    oled.print((long)rtcRawCount - oldticks);
+
     oldticks = rtcRawCount; // copy current residual count
     
 //   while (GPSticks < 0){
@@ -158,7 +186,8 @@ ISR(RTC_CNT_vect)
 // Interrupt service routine for counting GPS ticks
 void GPS_ISR(void){
 //  detachInterrupt(digitalPinToInterrupt(GPSinput));
-  GPSticks++;
+  rtcRawCount = RTC.CNT; // Grab the current number of RTC ticks (0-32767)
+  GPSticks++; // increment the GPS seconds count
 //  attachInterrupt(digitalPinToInterrupt(GPSinput), GPS_ISR, RISING);
 }
 
