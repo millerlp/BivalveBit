@@ -26,7 +26,11 @@
 
 volatile uint16_t RTCticks = 0; // Used to count RTC interrupts
 volatile uint16_t GPSticks = 0; // Used to count GPSticks
-int8_t trimValue = 20; // Signed crystal frequency trimming value -127 to +127
+uint16_t TimeIntervalSeconds = 120; // Testing interval - use 60 seconds or greater to allow 
+                                   // for the clock trimming to be effective
+int8_t trimValue = 127; // Signed crystal frequency trimming value -127 to +127
+long oldticks = 0;
+
 #define GPSinput 14 // Take input on PD2, digital pin 14
 #define GRNLED 8 
 
@@ -45,6 +49,7 @@ void setup() {
   pinMode(GRNLED, OUTPUT);
   digitalWrite(GRNLED, HIGH);
   pinMode(17, OUTPUT);  // PD5 = D17
+  pinMode(16, OUTPUT);  // PD4 = D16
   Serial.println("Clock check");
   delay(20);
   while (!MCP7940.begin()) {  // Initialize RTC communications
@@ -105,26 +110,35 @@ void setup() {
 void loop() {
   // Most action should be in the interrupt service routines, until GPSticks gets to 10
  
-  if (GPSticks >= 10){
-   uint16_t rtcRawCount = RTC.CNT; // Read the current count value in the RTC counter 
+  if (GPSticks >= TimeIntervalSeconds){
+    // As soon as GPSticks exceeds the target interval, grab copies of
+    // the numer of crystal ticks in the RTC.CNT register, along with the
+    // current full RTCticks (measured seconds), to compare to the GPSticks
+   uint16_t rtcRawCount = RTC.CNT; // Read the current count value in the RTC counter
+   RTC.CNT = 0; // immediately reset RTC counter
+   uint8_t currRTCticks = RTCticks; // store elapsed seconds for printing
+   uint8_t currGPSticks = GPSticks; // store elapsed seconds for printing
+   GPSticks = 0; // Reset the seconds count from the GPS
+   RTCticks = 0; // Reset the seconds count from the RTC
 
+   // Print the results while we have the rest of the second to kill
     Serial.print("GPS: ");
-    Serial.print(GPSticks);
+    Serial.print(currGPSticks);
     Serial.print("\t RTC ticks: ");
-    Serial.print(RTCticks);
+    Serial.print(currRTCticks);
     Serial.print("\t RTC residual counts: ");
-    Serial.println(rtcRawCount);
-
-   GPSticks = 0; // Reset
-   RTCticks = 0; // Reset
-   rtcRawCount = 0; // Reset
-   while (GPSticks < 0){
-    // kill time here until GPS ticks again
-   }
-//   RTC.CNT = 0; // reset RTC counter
-   RTCticks = 0;
-   GPSticks = 0; // reset again
-  } // end of if(GPSticks == 10)
+    Serial.print(rtcRawCount);
+    Serial.print("\t diff: ");
+    Serial.println((long)rtcRawCount - oldticks);
+    PORTD.IN |= PIN4_bm; // Toggle pin PD4 also
+    oldticks = rtcRawCount; // copy current residual count
+    
+//   while (GPSticks < 0){
+//    // kill time here until GPS ticks again
+//   }
+//   RTCticks = 0;
+//   GPSticks = 0; // reset again
+  } // end of if(GPSticks >= TimeIntervalSeconds)
   
 }  // end of main loop
 
