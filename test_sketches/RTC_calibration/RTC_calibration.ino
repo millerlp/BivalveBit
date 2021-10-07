@@ -27,10 +27,10 @@
 #include "SSD1306AsciiWire.h" // https://github.com/greiman/SSD1306Ascii
 
 
-volatile unsigned long RTCticks = 0; // Used to count RTC interrupts
-volatile unsigned long GPSticks = 0; // Used to count GPSticks
+volatile long RTCticks = 0; // Used to count RTC interrupts
+volatile long GPSticks = 0; // Used to count GPSticks
 volatile uint16_t rtcRawCount; // Used to count clock cycles on 32.768kHz RTC counter
-unsigned long oldGPSticks = 0;
+long oldGPSticks = 0;
 uint16_t TimeIntervalSeconds = 30; // Testing interval - use 60 seconds or greater to allow 
                                    // for the clock trimming to be effective
                                    
@@ -131,8 +131,8 @@ void loop() {
     // current full RTCticks (measured seconds), to compare to the GPSticks
 //   uint16_t rtcRawCount = RTC.CNT; // Read the current count value in the RTC counter
 
-   unsigned long currRTCticks = RTCticks; // store elapsed seconds for printing
-   unsigned long currGPSticks = GPSticks; // store elapsed seconds for printing
+   long currRTCticks = RTCticks; // store elapsed seconds for printing
+   long currGPSticks = GPSticks; // store elapsed seconds for printing
    oldGPSticks = currGPSticks; // store GPSticks value for comparison above
 //   GPSticks = 0; // Reset the seconds count from the GPS
 //   RTCticks = 0; // Reset the seconds count from the RTC
