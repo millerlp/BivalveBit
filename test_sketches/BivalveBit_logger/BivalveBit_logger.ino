@@ -23,7 +23,7 @@ const uint8_t SD_CHIP_SELECT = 7;
 SdFat sd;  // sd card object
 bool SDfailFlag = false;
 SdFile logfile;  // for sd card, this is the file object to be written to
-char filename[] = "YYYYMMDD_HHMM_00_SN00.csv";
+char filename[] = "YYYYMMDD_HHMM_00_SN000.csv";
 
 /**********************************************************
  * Create VCNL4040 object
@@ -274,10 +274,10 @@ void loop() {
 //  digitalWrite(HALL_SLEEP, LOW); // put hall sensor to sleep
   Serial.print("Hall: ");
   Serial.print(HallValue);
-  Serial.print("  VCNL: ");
+  Serial.print("  Heart: ");
   unsigned int Prox = vcnl4040.getProximity();
   Serial.print(Prox);
-  Serial.print("  temp: ");
+  Serial.print("  Temp: ");
   float tempC = TMP117sensor.readTempC();
   // Print temperature in °C
   Serial.print(tempC);
@@ -292,9 +292,9 @@ void loop() {
   oled.clear();
   oled.print("Hall: ");
   oled.println(HallValue);
-  oled.print("VCNL: ");
+  oled.print("Heart: ");
   oled.println(Prox);
-  oled.print("temp: ");
+  oled.print("Temp: ");
   oled.println(tempC,2);
   oled.print("Battery: ");
   oled.println(batteryVolts,3);
