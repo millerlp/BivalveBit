@@ -166,9 +166,10 @@ void setup() {
     delay(100);
     
 //    return;  // this would restart the setup loop
+  } else {
+    Serial.println("SD card initialized.");
+    oled.println("SD card found");
   }
-  Serial.println("SD card initialized.");
-  oled.println("SD card found");
   digitalWrite(GRNLED,LOW);
   delay(100);
   digitalWrite(GRNLED,HIGH);
