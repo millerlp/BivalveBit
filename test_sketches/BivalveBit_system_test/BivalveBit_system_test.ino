@@ -103,15 +103,19 @@ void setup() {
   digitalWrite(BATT_MONITOR_EN, LOW); // pull low to turn off battery monitor circuit
 
   // Flash both LEDs to show that they work
-  for (int i = 0; i++; i<5){
-    digitalWrite(REDLED, !digitalRead(REDLED));
+  for (int i = 0; i<5; i++){
+    digitalWrite(REDLED, LOW);
     delay(100);
-    digitalWrite(GRNLED, !digitalRead(GRNLED));
+    digitalWrite(GRNLED, LOW);
+    delay(100);
+    digitalWrite(REDLED, HIGH);
+    delay(100);
+    digitalWrite(GRNLED, HIGH);
     delay(100);
   }
   digitalWrite(REDLED, HIGH); // turn off
   digitalWrite(GRNLED, HIGH); // turn off
-  
+
   Serial.begin(57600);
 //  while (!Serial) { delay(1); } // Wait until serial port is opened
   Serial.println("Hi");
@@ -126,7 +130,7 @@ void setup() {
   oled.home();
 //  oled.println("Hello");
 
-  
+  Serial.println("Testing real time clock");
   //--------------------------------------------------------------------------
   // RTC initialization
   while (!MCP7940.begin()) {  // Initialize RTC communications
