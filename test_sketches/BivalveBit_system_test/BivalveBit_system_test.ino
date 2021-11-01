@@ -193,11 +193,12 @@ void setup() {
     oled.println("Heart sensor fail");
   } else {
     oled.println("Heart sensor on");
+    Serial.println("VCNL4040 Heart sensor activated");
     digitalWrite(GRNLED,LOW);
     delay(100);
     digitalWrite(GRNLED,HIGH);
     delay(100);
-      vcnl4040.enableAmbientLight(false);
+    vcnl4040.enableAmbientLight(false);
     vcnl4040.enableWhiteLight(false);
     vcnl4040.enableProximity(true);
     vcnl4040.setProximityHighResolution(true);
