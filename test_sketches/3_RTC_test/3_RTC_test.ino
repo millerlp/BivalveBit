@@ -76,7 +76,7 @@ void setup() {
   }
   
   // Turn on the square wave output pin of the RTC chip
-  MCP7940.setSQWSpeed(3); // set SQW frequency to 32768 Hz
+  MCP7940.setSQWSpeed(3); // set SQW frequency to 32768 Hz (0=1Hz, 1 = 4.096kHz, 2 = 8.192kHz, 3 = 32.768kHz)
   MCP7940.setSQWState(true); // turn on the square wave output pin
 
 //  digitalWrite(VREG_EN, LOW); // turn off
