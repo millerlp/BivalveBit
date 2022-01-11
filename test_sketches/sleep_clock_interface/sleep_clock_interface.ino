@@ -1,5 +1,7 @@
 /*  sleep_clock_interface
- *   
+ *   test code to see if we can put the processor to sleep and wake it
+ *   with the output from the RTC. The RTC is set to output a 1Hz signal
+ *   on its multifunction pin, which feeds into the Atmega's pin 20 (PF0)
  * 
  */
 
@@ -21,14 +23,17 @@ const uint8_t  SPRINTF_BUFFER_SIZE{32};  // Buffer size for sprintf()
 MCP7940_Class MCP7940;                           // Create an instance of the MCP7940
 char          inputBuffer[SPRINTF_BUFFER_SIZE];  // Buffer for sprintf()/sscanf()
 
-volatile bool CLCKPIN_flag = 0; 
-
+volatile bool CLCKPIN_flag = false; 
+volatile bool PD6PIN_flag = false;
+volatile byte INT_count = 0;
 
 
 //-------------------------------------- 
 void setup() {
   pinMode(REDLED, OUTPUT);
   pinMode(GRNLED, OUTPUT);
+  pinMode(18, INPUT_PULLUP); // pin PD6, reed switch
+  pinMode(20, INPUT); // pin PF0, attached to RTC multi-function pin
   digitalWrite(REDLED, HIGH); // set high to turn OFF
   digitalWrite(GRNLED, HIGH); // set high to turn OFF
 //  pinMode(2, OUTPUT);
@@ -62,35 +67,66 @@ void setup() {
   } else {
    Serial.println("disabled.");
   }
+  delay(5);
   
   // Turn on the square wave output pin of the RTC chip
-  MCP7940.setSQWSpeed(3); // set SQW frequency to 32768 Hz (0=1Hz, 1 = 4.096kHz, 2 = 8.192kHz, 3 = 32.768kHz)
+  MCP7940.setSQWSpeed(0); // set SQW frequency to 32768 Hz (0=1Hz, 1 = 4.096kHz, 2 = 8.192kHz, 3 = 32.768kHz)
   MCP7940.setSQWState(true); // turn on the square wave output pin
 
 //  digitalWrite(VREG_EN, LOW); // turn off
 
 
-  PORTF.PIN0CTRL | PORT_ISC_BOTHEDGES_gc; // Set up pin change interrupt on PF0
-  sei();  // Global interrupt enable 
+  attachInterrupt(digitalPinToInterrupt(20),testInterrupt, CHANGE); // pin 20 to RTC Multi-func pin
+  /* For pin 20 (PF0), it is only possible to wake the processor using the CHANGE 
+   *  interrupt, not RISING or FALLING. This means that if the RTC is sending out a 
+   *  1Hz signal that has a rising edge every 1 second, you'll get two interrupts per
+   *  second as the pin first rises, and then falls 500ms later. 
+   */
+
+//  PORTF.PIN0CTRL | PORT_ISC_BOTHEDGES_gc; // Set up pin change interrupt on PF0
+//  sei();  // Global interrupt enable 
   
   set_sleep_mode(SLEEP_MODE_PWR_DOWN);  // Set sleep mode to POWER DOWN mode 
+//  set_sleep_mode(SLEEP_MODE_STANDBY);  // Set sleep mode to STANDBY mode
   sleep_enable();                       // Enable sleep mode, but not going to sleep yet 
+
+  digitalWrite(REDLED, LOW); // set high to turn OFF
+  digitalWrite(GRNLED, HIGH); // set high to turn OFF
+  sleep_cpu();
+} // end of setup loop
+
+// Define ISR for the pin change interrupt
+/* Because the 1Hz input will trigger an interrupt on 
+ *  each rise and fall (500ms apart), we need to count
+ *  how many interrupts have happened, and once we get 
+ *  to the 2nd interrupt, then the CLCKPIN_flag can be
+ *  set true. Thus the flag should become true once per
+ *  second.
+ *  
+ */
+void testInterrupt() {
+  ++INT_count;
+  if (INT_count > 1){
+    INT_count = 0; // reset count
+    CLCKPIN_flag = true;
+  }
 }
 
-// Define ISR for the pin change interrupt on PF0
-/* ISR(PORTF_PORT_vect){
- *  CLKPIN_flag = 1;
- *  PORTC_OUT |= PIN0_bm; // Toggle LED on pin PC0 (Arduino pin 8)
- *  PORTF.INTFLAGS != PIN0_bm; // Clear interrupt flag
- *  TODO: Figure out how to make this junk work. 
- *  }
- */
 
 
 
 //-----------------------------------------------------------------
 void loop() {
 
+    // Toggle LEDs if the interrupt flag has been set true inside
+    // the interrupt routine
+    if (CLCKPIN_flag) {
+      PORTC_OUTTGL |= PIN0_bm | PIN3_bm; // Toggle LED on pin PC0 (Arduino pin 8, GRNLED) and PC3 (REDLED)
+//      digitalWrite(GRNLED, !digitalRead(GRNLED)); // slower version
+//      digitalWrite(REDLED, !digitalRead(REDLED)); // slower version
+      CLCKPIN_flag = false; // reset for the next cycle
+      // Do other stuff at the 1 second mark, i.e. check time
+    }
 
   static uint8_t secs;                 // store the seconds value
   DateTime       now = MCP7940.now();  // get the current time
@@ -102,11 +138,12 @@ void loop() {
     Serial.println(inputBuffer);                   // Display the current date/time
     secs = now.second();                           // Set the counter variable
 //    digitalWrite(REDLED, !(digitalRead(REDLED)));   // Toggle the LED
-    digitalWrite(GRNLED, !(digitalRead(GRNLED)));   // Toggle the LED
+//    digitalWrite(GRNLED, !(digitalRead(GRNLED)));   // Toggle the LED
   }                                                // of if the seconds have changed
   
   readCommand();  
-
+  delay(8); // give time for Serial to print
+  sleep_cpu();
 }
 
 
