@@ -5,10 +5,17 @@
 */
 
 #include <avr/sleep.h>
+#include "BivalveBit_lib.h"
 #define GRNLED 8
+#define VREG_EN 24  // voltage regulator enable
 
 uint8_t loopCount = 0 ;
 
+//  Battery monitor 
+byte BATT_MONITOR_EN = 9; // digital output channel to turn on battery voltage check
+byte BATT_MONITOR = A1;  // analog input channel to sense battery voltage
+float dividerRatio = 2; // Ratio of voltage divider (47k + 47k) / 47k = 2
+float refVoltage = 3.00; // Voltage at AREF pin on ATmega microcontroller, measured per board
 
 void RTC_init(void)
 {
@@ -26,9 +33,22 @@ ISR(RTC_PIT_vect)
 }
 
 void setup() {
+
   pinMode(GRNLED, OUTPUT);
+  setUnusedPins(); // Function in BivalveBit_lib.h
+  disableUnusedPeripherals();
+  // Voltage regulator pins
+  pinMode(VREG_EN, OUTPUT);
+  digitalWrite(VREG_EN, LOW); // set low to turn off, high to turn on (~150usec to wake)
+  analogReference(EXTERNAL); // using voltage regulator value on external pin (will this fail if vreg is off?)
+  // Battery monitor pins
+  pinMode(BATT_MONITOR, INPUT); // Battery voltage input channel
+  pinMode(BATT_MONITOR_EN, OUTPUT); // Battery monitor enable pin
+  digitalWrite(BATT_MONITOR_EN, LOW); // pull low to turn off battery monitor circuit
+
   RTC_init();   
   set_sleep_mode(SLEEP_MODE_PWR_DOWN);  // Set sleep mode to POWER DOWN mode 
+//  set_sleep_mode(SLEEP_MODE_STANDBY);  // Set sleep mode to POWER DOWN mode
   sleep_enable();                       // Enable sleep mode, but not going to sleep yet 
 }
 
