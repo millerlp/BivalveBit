@@ -47,8 +47,8 @@ void setup() {
   digitalWrite(BATT_MONITOR_EN, LOW); // pull low to turn off battery monitor circuit
 
   RTC_init();   
-  set_sleep_mode(SLEEP_MODE_PWR_DOWN);  // Set sleep mode to POWER DOWN mode 
-//  set_sleep_mode(SLEEP_MODE_STANDBY);  // Set sleep mode to POWER DOWN mode
+//  set_sleep_mode(SLEEP_MODE_PWR_DOWN);  // Set sleep mode to POWER DOWN mode 
+  set_sleep_mode(SLEEP_MODE_STANDBY);  // Set sleep mode to POWER DOWN mode
   sleep_enable();                       // Enable sleep mode, but not going to sleep yet 
 }
 
