@@ -1,6 +1,8 @@
 /* BivalveBit_logger2.ino
  *  Draft of a BivalveBit data logger program with sleep modes and
  *  state machine to run things
+ *  TODO: The RTC_PIT_vect interrupt isn't firing when it goes into 
+ *  8Hz mode. 32.768kHz signal is coming in like it's supposed to.
  *  
  */
 
@@ -36,7 +38,8 @@ typedef enum STATE
 {
   STATE_1MINUTE_SLEEP, // sleep until new minute turns over based on RTC alarm
   STATE_FAST_SAMPLE,  // sleep for short interval based on RTC wakeup signal (8Hz)
-  STATE_SHUTDOWN, // close data file, shut down data collection due to low battery
+  STATE_WRITE_SD, // Write data from buffer to SD card after sampling is finished
+  STATE_SHUTDOWN // close data file, shut down data collection due to low battery
 } mainState_t;
 // main state machine variable, this takes on the various
 // values defined for the STATE typedef above. 
@@ -58,6 +61,7 @@ MCP7940_Class MCP7940;                           // Create an instance of the MC
 const uint32_t SERIAL_SPEED{57600};     // Set the baud rate for Serial I/O
 const uint8_t  SPRINTF_BUFFER_SIZE{32};  // Buffer size for sprintf()
 char          inputBuffer[SPRINTF_BUFFER_SIZE];  // Buffer for sprintf()/sscanf()
+DateTime now; // Variable to hold current time
 /*! ///< Enumeration of MCP7940 alarm types */
 enum alarmTypes {
   matchSeconds,
@@ -72,63 +76,120 @@ enum alarmTypes {
 };
 
 
+void test_pin_init(void){
+    /* Make High (OFF) */
+    PORTC.OUT |= PIN0_bm; // BivalveBit green led on pin PC0 (arduino pin 8)
+    /* Make output */
+    PORTC.DIR |= PIN0_bm;
+
+    /* Make High (OFF) */
+    PORTC.OUT |= PIN3_bm; // BivalveBit red led on pin PC3 (arduino pin 11)
+    /* Make output */
+    PORTC.DIR |= PIN3_bm;
+    
+    /* Make High (OFF) */
+    PORTD.OUT |= PIN2_bm; // Pin PD2 (probe with scope/analyzer)
+    /* Make output */
+    PORTD.DIR |= PIN2_bm;
+}
+
+ISR(RTC_PIT_vect)
+{
+    /* Clear flag by writing '1': */
+    RTC.PITINTFLAGS = RTC_PI_bm;
+    PORTD.OUTTGL |= PIN2_bm; // Toggle PD2 (probe with scope/analyzer)
+    PORTC.OUTTGL |= PIN0_bm; // BivalveBit green led on pin PC0 
+}
+
+void SLPCTRL_init(void)
+{
+//    SLPCTRL.CTRLA |= SLPCTRL_SMODE_PDOWN_gc;
+    SLPCTRL.CTRLA |= SLPCTRL_SMODE_STDBY_gc;
+    SLPCTRL.CTRLA |= SLPCTRL_SEN_bm;
+}
+
+
+//---------------------------------------------------------------
+//-------- Setup
+//---------------------------------------------------------------
 void setup() {
   Serial.begin(57600);
   Serial.println("Hello");
   pinMode(20, INPUT_PULLUP); // pin PF0, attached to RTC multi-function pin
   MCP79400setup();
   Serial.print("Date/Time set to ");
-  DateTime now = MCP7940.now();  // get the current time
+  now = MCP7940.now();  // get the current time
   // Use sprintf() to pretty print date/time with leading zeroes
   sprintf(inputBuffer, "%04d-%02d-%02d %02d:%02d:%02d", now.year(), now.month(), now.day(),
           now.hour(), now.minute(), now.second());
   Serial.println(inputBuffer);
-
+  test_pin_init(); // Set up the LEDs and PD2 output pin
+  
   MCP79400Alarm1Minute(now); // Set RTC multifunction pin to alarm when new minute hits
   
   attachInterrupt(digitalPinToInterrupt(20),RTC1MinuteInterrupt, CHANGE); // pin 20 to RTC
 
   mainState = STATE_1MINUTE_SLEEP;
-  set_sleep_mode(SLEEP_MODE_PWR_DOWN);  // Set sleep mode to POWER DOWN mode 
-  sleep_enable();
+  SLPCTRL_init();
+//  set_sleep_mode(SLEEP_MODE_PWR_DOWN);  // Set sleep mode to POWER DOWN mode 
+//  sleep_enable();
   sleep_cpu();
-  detachInterrupt(digitalPinToInterrupt(20));
+//  detachInterrupt(digitalPinToInterrupt(20));
 }     //end setup
 
+
+//--------------------------------------------------------------------
+//----------------- Main loop
+//--------------------------------------------------------------------
 void loop() {
-  DateTime       now = MCP7940.now();  // get the current time first
+  
 
   switch(mainState) {
     case STATE_1MINUTE_SLEEP:
+        now = MCP7940.now();  // get the current time
         // Start by clearing the RTC alarm
         MCP7940.clearAlarm(0); // clear the alarm pin (reset the pin to high)
-        
-        
+        Serial.println("Woke from 1 minute alarm");
+        delay(10);
         // Check time, 
         if ( now.minute() % heartMinute == 0) {
           // If it's a heart minute, sample Hall, temperature, and battery, then 
           // switch to 8Hz wake interval and change mainState to STATE_FAST_SAMPLE
           // TODO: Take Hall, temperature, battery voltage samples
 
+          
+//          PORTC.OUTTGL |= PIN3_bm; // BivalveBit red led on PC3
+//          PORTD.OUTTGL |= PIN2_bm; // Toggle PD2 (probe with scope/analyzer)
+          
           // TODO: Write values to SD card (start new file if it's a new day)
 
           // TODO: Test if battery voltage is too low, go to STATE_SHUTDOWN if so
 
           // Switch to fast sample state
           detachInterrupt(digitalPinToInterrupt(20)); // Remove the current 1 minute interrupt
+          Serial.println("Switching to 8Hz mode");
+          delay(10);
           mainState = STATE_FAST_SAMPLE;
+          // Activate the RTC's 32.768kHz clock output
+          MCP79400sqw32768();
           PIT_init(); // set up the Periodic Interrupt Timer to wake at 8Hz
-          
+          sei();  // enable global interrupts
+          delayMicroseconds(50);
+
+          // exit to main loop and go to sleep
         } else {
           // If it's a non-heart minute, only sample Hall, temperature, battery
           // and update 1 minute wake interval, remain in STATE_1MINUTE_SLEEP
 
           // TODO: Take Hall, temperature, battery voltage samples
-
+          PORTC.OUTTGL |= PIN0_bm; // BivalveBit green led on PC0
+//          PORTD.OUTTGL |= PIN2_bm; // Toggle PD2 (probe with scope/analyzer)
+          
           // TODO: Write values to SD card (start new file if it's a new day)
 
           // TODO: Test if battery voltage is too low, go to STATE_SHUTDOWN if so
-
+          Serial.println("Staying in 1 minute sleep loop");
+          delay(10);
           // Re-enable 1-minute wakeup interrupt
           attachInterrupt(digitalPinToInterrupt(20),RTC1MinuteInterrupt, CHANGE); // pin 20 to RTC          
         }
@@ -143,11 +204,12 @@ void loop() {
         // Write the heart data to file, reset the wakeup alarm to 1 minute intervals 
 
         // TODO: Take heart sensor sample, add it to the buffer
-
+//        PORTC.OUTTGL |= PIN3_bm; // BivalveBit red led on pin PC3 
+//        PORTD.OUTTGL |= PIN2_bm; // Toggle PD2 (probe with scope/analyzer)
         
         ++heartCount; // Increment heart sample counter
-
-
+        Serial.println(heartCount);
+        delay(8);
         // If enough samples have been taken, revert to 1 minute intervals
         if ( heartCount >= (heartSampleLength-1) ) {
           heartCount = 0; // reset for next sampling round
@@ -155,13 +217,22 @@ void loop() {
           // TODO: Write heart buffer to SD card. Start new file if it's a new day
 
           
-          mainState = STATE_1MINUTE_SAMPLE; // reset to 1 minute sample interval
-          RTC.PITINTCTRL &= ~RTC_PI_bm; /* Periodic Interrupt: disabled, cancels 8Hz wakeup */ 
-          MCP79400Alarm1Minute(MCP7940.now()); // Reset 1 minute alarm
-          attachInterrupt(digitalPinToInterrupt(20),RTC1MinuteInterrupt, CHANGE); // pin 20 to RTC
+          mainState = STATE_WRITE_SD; // switch to write SD state
+         
         }
 
         
+    break;
+
+    case STATE_WRITE_SD:
+      // Arrive here from STATE_FAST_SAMPLE
+      // TODO: Write IR data to SD card
+      Serial.println("SD write block, return to 1 minute sleep");
+      delay(5);
+      mainState = STATE_1MINUTE_SLEEP; // reset to 1 minute sleep interval
+      RTC.PITINTCTRL &= ~RTC_PI_bm; /* Periodic Interrupt: disabled, cancels 8Hz wakeup */ 
+      MCP79400Alarm1Minute(MCP7940.now()); // Reset 1 minute alarm
+      attachInterrupt(digitalPinToInterrupt(20),RTC1MinuteInterrupt, CHANGE); // pin 20 to RTC
     break;
 
     case STATE_SHUTDOWN:
@@ -181,14 +252,17 @@ void loop() {
    *  to the top of the main loop to check the time and decide what
    *  to do next in the mainState chunk
    */
+
   sleep_cpu(); 
-  detachInterrupt(digitalPinToInterrupt(20));
+//  detachInterrupt(digitalPinToInterrupt(20));
 }     // end main loop
+
 
 //---------------------------------------------------------
 // Interrupt for pin 20, connected to RTC MFP
+// Used for the 1-minute alarms
 void RTC1MinuteInterrupt() {
-  PORTC_OUTTGL |= PIN0_bm; // Toggle LED on pin PC0 (Arduino pin 8, GRNLED)
+//  PORTC_OUTTGL |= PIN0_bm; // Toggle LED on pin PC0 (Arduino pin 8, GRNLED)
 }
 
 
@@ -221,6 +295,7 @@ void MCP79400Alarm1Minute(DateTime currentTime){
   Serial.println("Setting alarm 0 for every minute at 0 seconds.");
   MCP7940.setAlarm(0, matchSeconds, currentTime - TimeSpan(0, 0, 0, currentTime.second()),
                    true);  // Match once a minute at 0 seconds
+  delay(10);
 }
 
 //--------------------------------------------
@@ -237,9 +312,6 @@ void MCP79400sqw32768(){
 // assuming the RTC's multifunction pin is outputing a 32.768kHz clock signal
 void PIT_init(void)
 {
-    // Activate the RTC's 32.768kHz clock output
-    MCP79400sqw32768();
-    
     uint8_t temp;
     
     /* Initialize 32.768kHz Oscillator: */
@@ -267,7 +339,11 @@ void PIT_init(void)
 
     /* Enable oscillator: */
     temp = CLKCTRL.XOSC32KCTRLA;
-    temp |= CLKCTRL_ENABLE_bm; // This will update TOSC1's function
+    Serial.println(temp,BIN);
+    temp |= CLKCTRL_RUNSTDBY_bm | CLKCTRL_ENABLE_bm; // LPM test - put into run standby mode + enable
+    Serial.println(temp,BIN);
+//    temp |= CLKCTRL_ENABLE_bm; // This will update TOSC1's function
+//    Serial.println(temp,BIN);
     /* Writing to protected register */
 //    ccp_write_io((void*)&CLKCTRL.XOSC32KCTRLA, temp);
     _PROTECTED_WRITE(CLKCTRL.XOSC32KCTRLA, temp);  // Arduino version of ccp_write_io
@@ -294,10 +370,4 @@ void PIT_init(void)
     // Prescaler 4096 gives 8 interrupts per second (period from high to high = 250ms)
     RTC.PITCTRLA = RTC_PERIOD_CYC4096_gc /* RTC Clock Cycles 4096 */
              | RTC_PITEN_bm; /* Enable: enabled by writing 1*/                 
-}
-
-ISR(RTC_PIT_vect)
-{
-    /* Clear flag by writing '1': */
-    RTC.PITINTFLAGS = RTC_PI_bm;
 }

@@ -24,6 +24,20 @@ const uint8_t  SPRINTF_BUFFER_SIZE{32};  // Buffer size for sprintf()
 MCP7940_Class MCP7940;                           // Create an instance of the MCP7940
 char          inputBuffer[SPRINTF_BUFFER_SIZE];  // Buffer for sprintf()/sscanf()
 
+/*! ///< Enumeration of MCP7940 alarm types */
+enum alarmTypes {
+  matchSeconds,
+  matchMinutes,
+  matchHours,
+  matchDayOfWeek,
+  matchDayOfMonth,
+  Unused1,
+  Unused2,
+  matchAll,
+  Unknown
+};
+
+
 volatile bool CLCKPIN_flag = false; 
 volatile bool PD6PIN_flag = false;
 volatile byte INT_count = 0;
@@ -162,6 +176,19 @@ void setup(void)
    Serial.println("disabled.");
   }
   delay(5);
+  DateTime now = MCP7940.now();
+// Testing - turn on alarm setting first, then try to shut if off and go to 32768
+//  MCP7940.setSQWState(false); // turn off square wave output if currently on
+//  MCP7940.setAlarmPolarity(false); // pin goes low when alarm is triggered
+//  Serial.println("Setting alarm 0 for every minute at 0 seconds.");
+//  MCP7940.setAlarm(0, matchSeconds, now - TimeSpan(0, 0, 0, now.second()),
+//                   true);  // Match once a minute at 0 seconds
+//  delay(10);
+//  // now try to disable it
+//  MCP7940.setAlarm(0,0, DateTime(2020,1,1,1,1,1)); // Deactivate alarm
+//  attachInterrupt(digitalPinToInterrupt(20),RTC1MinuteInterrupt, CHANGE); // pin 20 to RTC
+//  delay(10);
+//  detachInterrupt(digitalPinToInterrupt(20));
   
   // Turn on the square wave output pin of the RTC chip
   MCP7940.setSQWSpeed(3); // set SQW frequency (0=1Hz, 1 = 4.096kHz, 2 = 8.192kHz, 3 = 32.768kHz)
@@ -201,6 +228,10 @@ void loop(void)
 }
 
 
+// Interrupt for pin 20, connected to RTC MFP
+void RTC1MinuteInterrupt() {
+//  PORTC_OUTTGL |= PIN0_bm; // Toggle LED on pin PC0 (Arduino pin 8, GRNLED)
+}
 
 /***************************************************************************************************
 ** Method readCommand(). This function checks the serial port to see if there has been any input. **
