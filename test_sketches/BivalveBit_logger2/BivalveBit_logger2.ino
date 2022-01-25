@@ -103,8 +103,8 @@ ISR(RTC_PIT_vect)
 
 void SLPCTRL_init(void)
 {
-//    SLPCTRL.CTRLA |= SLPCTRL_SMODE_PDOWN_gc;
-    SLPCTRL.CTRLA |= SLPCTRL_SMODE_STDBY_gc;
+    SLPCTRL.CTRLA |= SLPCTRL_SMODE_PDOWN_gc;
+//    SLPCTRL.CTRLA |= SLPCTRL_SMODE_STDBY_gc;
     SLPCTRL.CTRLA |= SLPCTRL_SEN_bm;
 }
 
@@ -117,19 +117,22 @@ void setup() {
   Serial.println("Hello");
   pinMode(20, INPUT_PULLUP); // pin PF0, attached to RTC multi-function pin
   MCP79400setup();
-  Serial.print("Date/Time set to ");
+  Serial.print("Date/Time: ");
   now = MCP7940.now();  // get the current time
   // Use sprintf() to pretty print date/time with leading zeroes
   sprintf(inputBuffer, "%04d-%02d-%02d %02d:%02d:%02d", now.year(), now.month(), now.day(),
           now.hour(), now.minute(), now.second());
   Serial.println(inputBuffer);
   test_pin_init(); // Set up the LEDs and PD2 output pin
-  
-  MCP79400Alarm1Minute(now); // Set RTC multifunction pin to alarm when new minute hits
-  
-  attachInterrupt(digitalPinToInterrupt(20),RTC1MinuteInterrupt, CHANGE); // pin 20 to RTC
 
-  mainState = STATE_1MINUTE_SLEEP;
+  MCP79400sqw32768();
+  PIT_init();
+  sei();
+//  MCP79400Alarm1Minute(now); // Set RTC multifunction pin to alarm when new minute hits
+//  attachInterrupt(digitalPinToInterrupt(20),RTC1MinuteInterrupt, CHANGE); // pin 20 to RTC
+
+//  mainState = STATE_1MINUTE_SLEEP;
+  mainState = STATE_FAST_SAMPLE;
   SLPCTRL_init();
 //  set_sleep_mode(SLEEP_MODE_PWR_DOWN);  // Set sleep mode to POWER DOWN mode 
 //  sleep_enable();
@@ -150,6 +153,9 @@ void loop() {
         // Start by clearing the RTC alarm
         MCP7940.clearAlarm(0); // clear the alarm pin (reset the pin to high)
         Serial.println("Woke from 1 minute alarm");
+        sprintf(inputBuffer, "%04d-%02d-%02d %02d:%02d:%02d", now.year(), now.month(), now.day(),
+          now.hour(), now.minute(), now.second());
+        Serial.println(inputBuffer);
         delay(10);
         // Check time, 
         if ( now.minute() % heartMinute == 0) {
@@ -170,10 +176,10 @@ void loop() {
           Serial.println("Switching to 8Hz mode");
           delay(10);
           mainState = STATE_FAST_SAMPLE;
-          // Activate the RTC's 32.768kHz clock output
-          MCP79400sqw32768();
+
           PIT_init(); // set up the Periodic Interrupt Timer to wake at 8Hz
           sei();  // enable global interrupts
+
           delayMicroseconds(50);
 
           // exit to main loop and go to sleep
@@ -208,7 +214,7 @@ void loop() {
 //        PORTD.OUTTGL |= PIN2_bm; // Toggle PD2 (probe with scope/analyzer)
         
         ++heartCount; // Increment heart sample counter
-        Serial.println(heartCount);
+//        Serial.println(heartCount);
         delay(8);
         // If enough samples have been taken, revert to 1 minute intervals
         if ( heartCount >= (heartSampleLength-1) ) {
@@ -312,6 +318,9 @@ void MCP79400sqw32768(){
 // assuming the RTC's multifunction pin is outputing a 32.768kHz clock signal
 void PIT_init(void)
 {
+    // Activate the RTC's 32.768kHz clock output
+    MCP79400sqw32768();
+    
     uint8_t temp;
     
     /* Initialize 32.768kHz Oscillator: */
@@ -319,7 +328,6 @@ void PIT_init(void)
     temp = CLKCTRL.XOSC32KCTRLA; // read register contents
     temp &= ~CLKCTRL_ENABLE_bm; // modify register, write 0 to ENABLE bit to allow changing setting
     /* Writing to protected register */
-//    ccp_write_io((void*)&CLKCTRL.XOSC32KCTRLA, temp);
     _PROTECTED_WRITE(CLKCTRL.XOSC32KCTRLA, temp);  // Arduino version of ccp_write_io
     
     while(CLKCTRL.MCLKSTATUS & CLKCTRL_XOSC32KS_bm)
@@ -331,7 +339,7 @@ void PIT_init(void)
     // Now you can actually change the register values safely
     temp = CLKCTRL.XOSC32KCTRLA;
 //    temp &= ~CLKCTRL_SEL_bm; // would set up for external crystal on TOSC1 & TOSC2
-    temp |= CLKCTRL_SEL_bm; // Set up for external clock on TOSC1 pin only
+    temp |= CLKCTRL_SEL_bm; // Set up for external clock on TOSC1 pin only by writing a 1
     /* Writing to protected register */
 //    ccp_write_io((void*)&CLKCTRL.XOSC32KCTRLA, temp);
      _PROTECTED_WRITE(CLKCTRL.XOSC32KCTRLA, temp);  // Arduino version of ccp_write_io
@@ -339,14 +347,17 @@ void PIT_init(void)
 
     /* Enable oscillator: */
     temp = CLKCTRL.XOSC32KCTRLA;
-    Serial.println(temp,BIN);
-    temp |= CLKCTRL_RUNSTDBY_bm | CLKCTRL_ENABLE_bm; // LPM test - put into run standby mode + enable
-    Serial.println(temp,BIN);
-//    temp |= CLKCTRL_ENABLE_bm; // This will update TOSC1's function
-//    Serial.println(temp,BIN);
+//    temp |= CLKCTRL_RUNSTDBY_bm | CLKCTRL_ENABLE_bm; // LPM test - put into run standby mode + enable
+    temp |= CLKCTRL_ENABLE_bm; // This will update TOSC1's function
     /* Writing to protected register */
-//    ccp_write_io((void*)&CLKCTRL.XOSC32KCTRLA, temp);
     _PROTECTED_WRITE(CLKCTRL.XOSC32KCTRLA, temp);  // Arduino version of ccp_write_io
+
+    /* There was a quirk where the RTC status would not go to zero when you 
+     *  re-entered this function after running it once. Disabling the RTC.CTRLA enable
+     *  bit appears to fix the problem
+     */
+    // Disable RTC (resets RTC and PIT if you write to RTC.CTRLA due to silicone error
+    RTC.CTRLA &= ~RTC_RTCEN_bm; // disable RTC
 
     /* Initialize RTC: */
     while (RTC.STATUS > 0)
@@ -361,6 +372,7 @@ void PIT_init(void)
 //    RTC.DBGCTRL = RTC_DBGRUN_bm;
     
     RTC.PITINTCTRL = RTC_PI_bm; /* Periodic Interrupt: enabled */
+
     // Define the prescalar value for the periodic interrupt timer. This will divide the
     // 32.768kHz input by the chosen prescaler. A prescaler of 32768 will cause the 
     // interrupt to only fire once per second.
@@ -369,5 +381,6 @@ void PIT_init(void)
 
     // Prescaler 4096 gives 8 interrupts per second (period from high to high = 250ms)
     RTC.PITCTRLA = RTC_PERIOD_CYC4096_gc /* RTC Clock Cycles 4096 */
-             | RTC_PITEN_bm; /* Enable: enabled by writing 1*/                 
+             | RTC_PITEN_bm; /* Enable: enabled by writing 1*/        
+ 
 }
