@@ -1,9 +1,10 @@
 /* BivalveBit_logger2.ino
  *  Draft of a BivalveBit data logger program with sleep modes and
  *  state machine to run things
- *  TODO: get files initialized for writing data
- *  TODO: Write data to csv files
- *  TODO: activate IR sensor, temperature sensor, Hall sensor
+ *  TODO: Read from IR sensor into buffer
+ *  TODO: Figure out why the thing is in a reboot loop when the OLED
+ *  isn't present. Maybe a capacitance/voltage droop issue on the I2C bus
+ *  Seems to work on battery, but not on FTDI alone
  *  
  */
 
@@ -30,9 +31,10 @@
  *  A value of 2 would sample every even-numbered minute
  *  A value of 5 would sample every 5 minutes
  */
-int heartMinute = 2; 
-int heartSampleLength = 240; // Number of heart samples to take in 1 minute
-int heartCount = 0; // Current number of heart samples taken in this minute
+unsigned int heartMinute = 2; 
+unsigned int heartSampleLength = 240; // Number of heart samples to take in 1 minute
+unsigned int heartCount = 0; // Current number of heart samples taken in this minute
+unsigned int heartBuffer[240] = {0}; // 
 
 bool writeSDgapeTempVoltage = false; // Flag to 
 
@@ -72,6 +74,7 @@ File GAPEFile; //SD card object 2 (Gape, Temp, Battery voltage data)
 bool SDfailFlag = false;
 // Placeholder serialNumber
 char serialNumber[] = "SN000";
+bool serialValid = false;
 // Declare initial name for output files written to SD card
 char heartfilename[] =  "YYYYMMDD_HHMM_00_SN000_IR.csv";
 char gapefilename[] =   "YYYYMMDD_HHMM_00_SN000_GAPE.csv";
@@ -81,12 +84,13 @@ char gapefilename[] =   "YYYYMMDD_HHMM_00_SN000_GAPE.csv";
 ********************************************************* */
 Adafruit_VCNL4040 vcnl4040 = Adafruit_VCNL4040();
 
+
 /**************************************************
  *  Create TMP117 temperature sensor object
  *   The default address of the device is 0x48 = (GND)
  *****************************************************/
 TMP117 TMP117sensor; // Initalize sensor
-
+float tempC;         // output variable for temperature
 /************************************************************
  * Hall effect sensor definitions
  ************************************************************/
@@ -104,6 +108,10 @@ const uint32_t SERIAL_SPEED{57600};     // Set the baud rate for Serial I/O
 const uint8_t  SPRINTF_BUFFER_SIZE{32};  // Buffer size for sprintf()
 char          inputBuffer[SPRINTF_BUFFER_SIZE];  // Buffer for sprintf()/sscanf()
 DateTime now; // Variable to hold current time
+DateTime firsttimestamp; // Variable to track fast sampling start 
+DateTime lasttimestamp; // Variable to track fast sampling end time
+byte oldday1; // Used to track midnight change
+byte oldday2; // Used to track midnight change
 /*! ///< Enumeration of MCP7940 alarm types */
 enum alarmTypes {
   matchSeconds,
@@ -119,8 +127,8 @@ enum alarmTypes {
 
 //------------------------------------------------------------
 //  Battery monitor 
-byte BATT_MONITOR_EN = 9; // digital output channel to turn on battery voltage check
-byte BATT_MONITOR = A1;  // analog input channel to sense battery voltage
+#define BATT_MONITOR_EN  9 // digital output channel to turn on battery voltage check
+#define BATT_MONITOR  A1  // analog input channel to sense battery voltage
 float dividerRatio = 2; // Ratio of voltage divider (47k + 47k) / 47k = 2
 float refVoltage = 3.00; // Voltage at AREF pin on ATmega microcontroller, measured per board
 float batteryVolts = 0; // Estimated battery voltage returned from readBatteryVoltage function
@@ -151,7 +159,7 @@ void test_pin_init(void){
 
 ISR(RTC_PIT_vect)
 {
-    /* Clear flag by writing '1': */
+    /* You must clear PIT interrupt flag by writing '1': */
     RTC.PITINTFLAGS = RTC_PI_bm;
     PORTD.OUTTGL |= PIN2_bm; // Toggle PD2 (probe with scope/analyzer)
     PORTC.OUTTGL |= PIN0_bm; // BivalveBit green led on pin PC0 
@@ -166,54 +174,124 @@ void setup() {
   Serial.begin(57600);
   Serial.println("Hello");
   analogReference(EXTERNAL);
-  // Voltage regulator pins
-  pinMode(VREG_EN, OUTPUT);
+  setUnusedPins(); // in BivalveBit_lib
+  disableUnusedPeripherals(); // in BivalveBit_lib
+  pinMode(VREG_EN, OUTPUT);   // Voltage regulator pin
   digitalWrite(VREG_EN, LOW); // set low to turn off, high to turn on (~150usec to wake)
   pinMode(20, INPUT_PULLUP); // pin PF0, attached to RTC multi-function pin
   // Battery monitor pins
   pinMode(BATT_MONITOR, INPUT); // Battery voltage input channel
   pinMode(BATT_MONITOR_EN, OUTPUT); // Battery monitor enable pin
   digitalWrite(BATT_MONITOR_EN, LOW); // pull low to turn off battery monitor circuit
+  test_pin_init(); // Set up the LEDs and PD2 output pin
+  //---------------------------------
   // Retrieve board serial number
-  char output[sizeof(serialNumber)];
-  EEPROM.get(0, output);
-  Serial.print("Serial number: "); Serial.println(output);
+  EEPROM.get(0, serialNumber);
+  if (serialNumber[0] == 'S') {
+    serialValid = true; // set flag   
+    Serial.print("Serial number: "); Serial.println(serialNumber); 
+  } else {
+    serialValid = false;
+    Serial.print("No serial number");
+  }
+  //----------------------------------------------------------
+  // SD card initialization
+  pinMode(SD_CHIP_SELECT, OUTPUT); // SD card chip select pin
+  if (!sd.begin(SD_CHIP_SELECT)) {
+    Serial.println("Card failed, or not present");
+    SDfailFlag = true;
+    for (int i = 0; i < 50; i++){
+      digitalWrite(REDLED, !digitalRead(REDLED));
+      delay(100);
+      digitalWrite(GRNLED, !digitalRead(GRNLED));
+      delay(100);
+    }
+    return;
+  } else {
+    Serial.println("SD Card initialized.");
+  }
+  digitalWrite(GRNLED,LOW); // set low to turn on
+  delay(500);
+  digitalWrite(GRNLED,HIGH); // set high to turn off
+  //---------------------------------------------------------------
+  digitalWrite(VREG_EN, HIGH); // set low to turn off, high to turn on (~150usec to wake)
+  delayMicroseconds(250);
   
+  // Start up VCNL4040 proximity sensor (heart sensor)
+  if (!vcnl4040.begin()) {
+    Serial.println("Couldn't find VCNL4040 chip");
+    digitalWrite(REDLED, LOW);
+    delay(500);
+    digitalWrite(REDLED, HIGH);
+    delay(100);
+//    oled.println("Heart sensor fail");
+  } else {
+//    oled.println("Heart sensor on");
+    digitalWrite(GRNLED,LOW);
+    delay(100);
+    digitalWrite(GRNLED,HIGH);
+    delay(100);
+  }
+  vcnl4040.enableAmbientLight(false);
+  vcnl4040.enableWhiteLight(false);
+  vcnl4040.enableProximity(true);
+  vcnl4040.setProximityHighResolution(true);
+  // Setting VCNL4040_LED_DUTY_1_40 gives shortest proximity measurement time (about 4.85ms)
+  vcnl4040.setProximityLEDDutyCycle(VCNL4040_LED_DUTY_1_40); // 1_40, 1_80,1_160,1_320
+  vcnl4040.setProximityLEDCurrent(VCNL4040_LED_CURRENT_50MA); // 50,75,100,120,140,160,180,200
+  // Setting VCNL4040_PROXIMITY_INTEGRATION_TIME_1T gives the shortest pulse (lowest LED output)
+  // in combination with the LED_CURRENT setting above. A longer integration time like
+  // VCNL4040_PROXIMITY_INTEGRATION_TIME_8T raises the pulse length (higher LED output) in
+  // combination with the LED_CURRENT setting.
+  vcnl4040.setProximityIntegrationTime(VCNL4040_PROXIMITY_INTEGRATION_TIME_1T); // 1T,1_5T,2T,2_5T,3T,3_5T,4T,8T
+  delay(200);   
+  //------------------------------------------------------------------
+  if (TMP117sensor.begin() == true) // Check if the sensor will correctly self-identify with the proper Device ID/Address
+  {
+    Serial.println("TMP117 Begin");
+    TMP117sensor.setConversionAverageMode(1); // set to 1 for averaging 8 readings, should take ~124ms
+    TMP117sensor.setShutdownMode(); // put into low power mode
+  }  else {
+    Serial.println("TMP117 device failed to setup- Freezing code.");
+    while (1){
+      digitalWrite(REDLED,!digitalRead(REDLED));
+      delay(500);
+      // Runs forever
+    }
+  }
+
+  
+  
+  digitalWrite(VREG_EN, LOW); // set low to turn off voltage regulator
+  //--------------------------------------------------------------
   MCP7940setup();
   now = MCP7940.now();  // get the current time
   // Use sprintf() to pretty print date/time with leading zeroes
   sprintf(inputBuffer, "%04d-%02d-%02d %02d:%02d:%02d", now.year(), now.month(), now.day(),
           now.hour(), now.minute(), now.second());
   Serial.print("Date/Time: "); Serial.println(inputBuffer);
-  test_pin_init(); // Set up the LEDs and PD2 output pin
-
-  //----------------------------------------------------------
-  // SD card initialization
-  if (!sd.begin(SD_CHIP_SELECT)) {
-    Serial.println("Card failed, or not present");
-    SDfailFlag = true;
-    digitalWrite(REDLED, LOW);
-    delay(100);
-    digitalWrite(REDLED, HIGH);
-    delay(100);
-    return;
+  // Check that real time clock has a reasonable time value
+  if ( (now.year() < 2022) | (now.year() > 2035) ) {
+     // Error, clock isn't set
+     while(1){
+      digitalWrite(REDLED, !digitalRead(REDLED));
+      delay(100);
+     }
   }
-  Serial.println("card initialized.");
-  digitalWrite(GRNLED,LOW);
-  delay(100);
-  digitalWrite(GRNLED,HIGH);
-  delay(500);
+  oldday1 = oldday2 = now.day(); // Store current day's value
+  // Initialize two data files
+  initHeartFileName(sd, IRFile, now, heartfilename, serialValid, serialNumber);
+  initGapeFileName(sd, GAPEFile, now, gapefilename, serialValid, serialNumber);
   
-
   MCP7940Alarm1Minute(now); // Set RTC multifunction pin to alarm when new minute hits
   attachInterrupt(digitalPinToInterrupt(20),RTC1MinuteInterrupt, CHANGE); // pin 20 to RTC
-
+  
   mainState = STATE_1MINUTE_SLEEP;
   writeState = WRITE_NOTHING;
-  SLPCTRL_init(); // in BivalveBitlib
-  sleep_cpu();
+  SLPCTRL_init(); // in BivalveBitlib - sets up sleep mode
+  sleep_cpu();    // put the cpu to sleep
 
-}     //end setup
+}     // end setup
 
 
 //--------------------------------------------------------------------
@@ -224,32 +302,43 @@ void loop() {
 
   switch(mainState) {
     case STATE_1MINUTE_SLEEP:
+    {
+        /* You arrived here because you're in the 1-minute sleep cycle
+         *  
+         */
         now = MCP7940.now();  // get the current time
         // Start by clearing the RTC alarm
         MCP7940.clearAlarm(0); // clear the alarm pin (reset the pin to high)
         Serial.println("Woke from 1 minute alarm");
         sprintf(inputBuffer, "%04d-%02d-%02d %02d:%02d:%02d", now.year(), now.month(), now.day(),
           now.hour(), now.minute(), now.second());
-        Serial.println(inputBuffer);
-        delay(10);
-        // Check time, decide what kind of wake interval and sampling to proceed with
-        if ( now.minute() % heartMinute == 0) {
-          // If it's a heart-sampling minute, sample Hall, temperature, and battery, then 
-          // switch to 8Hz wake interval and change mainState to STATE_FAST_SAMPLE
-          
-          // TODO: Take Hall, temperature, battery voltage samples
-          // Begin by enabling voltage regulator to regulate voltage to the 
-          // sensors and the analog-digital convertor reference
+        Serial.println(inputBuffer);        delay(10);
+
+        // Since a new minute just started, sample Hall, temperature, battery, and 
+        // then decide whether to switch to 8Hz fast sampling or stay in 1-minute sleep cycle
+          unsigned long firstmillis = millis();
           digitalWrite(VREG_EN, HIGH); // set high to enable voltage regulator
+          TMP117sensor.setOneShotMode(); // start a temperature reading
           batteryVolts = readBatteryVoltage(BATT_MONITOR_EN, BATT_MONITOR,\
                                               dividerRatio, refVoltage);
-          Serial.print("Battery: ");Serial.print(batteryVolts,2);Serial.println("V");
+          HallValue = readWakeHall(ANALOG_IN, HALL_SLEEP);                                              
+//          Serial.print("Battery: ");Serial.print(batteryVolts,2);Serial.println("V");delay(10);
           if (batteryVolts < minimumVoltage) {
             ++lowVoltageCount; // Increment the counter
           }
-          delay(10);
+          while (!TMP117sensor.dataReady()){
+            // do nothing during conversion
+          }
+          tempC = TMP117sensor.readTempC(); // retrieve the temperature value
+          TMP117sensor.setShutdownMode(); // put into low power mode
           digitalWrite(VREG_EN, LOW); // set low to turn off after sampling
-          
+          Serial.print("Sampling time ms: "); Serial.println(millis() - firstmillis);delay(10);
+        
+        // Check time, decide what kind of wake interval and sampling to proceed with
+        if ( now.minute() % heartMinute == 0) {
+          /* If it's a heart-sampling minute change mainState to STATE_FAST_SAMPLE
+           * to switch to 8Hz wake interval
+          */
           if (lowVoltageCount < lowVoltageCountLimit) {
             // Continue normal sampling routine
             mainState = STATE_FAST_SAMPLE; // switch to fast sampling next  
@@ -259,27 +348,10 @@ void loop() {
             mainState = STATE_SHUTDOWN;
             writeState = WRITE_HALL_TEMP_VOLTS;
           }
-                    
-          detachInterrupt(digitalPinToInterrupt(20)); // Remove the current 1 minute interrupt
-          MCP7940sqw32768(); // Reactivate the RTC's 32.768kHz clock output
-          PIT_init(); // set up the Periodic Interrupt Timer to wake at 8Hz (BivalveBitlib)
-          sei();  // enable global interrupts
-          // exit to main loop and go to sleep
         } else {
-          // If it's a non-heart minute, only sample Hall, temperature, battery
-          // and update 1 minute wake interval, remain in STATE_1MINUTE_SLEEP
-
-          // TODO: Take Hall, temperature, battery voltage samples
-          digitalWrite(VREG_EN, HIGH); // set high to enable voltage regulator
-          batteryVolts = readBatteryVoltage(BATT_MONITOR_EN, BATT_MONITOR,\
-                                                dividerRatio, refVoltage);
-          if (batteryVolts < minimumVoltage) {
-            ++lowVoltageCount; // Increment the counter
-          }                                                
-          Serial.print("Battery: ");Serial.print(batteryVolts,2);Serial.println("V");
-          delay(10);
-          digitalWrite(VREG_EN, LOW); // set low to turn off after sampling
-
+          /* If it's a non-heart minute, update 1 minute wake interval,
+          * and remain in STATE_1MINUTE_SLEEP
+          */    
           if (lowVoltageCount < lowVoltageCountLimit) {
             mainState = STATE_1MINUTE_SLEEP; // Remain in 1-minute sleep mode  
             writeState = WRITE_HALL_TEMP_VOLTS; // Write gape, temperature, voltage to SD
@@ -288,15 +360,15 @@ void loop() {
             mainState = STATE_SHUTDOWN;
             writeState = WRITE_HALL_TEMP_VOLTS;
           }
-
-          Serial.println("Staying in 1 minute sleep loop");
-          delay(10);
+          Serial.println("Staying in 1 minute sleep loop"); delay(10);
           // Re-enable 1-minute wakeup interrupt
           attachInterrupt(digitalPinToInterrupt(20),RTC1MinuteInterrupt, CHANGE); // pin 20 to RTC          
         }
+    }
     break;
 
     case STATE_FAST_SAMPLE:
+    {
         // If you arrive here from STATE_1MINUTE_SLEEP, the 8Hz wakeup signal should
         // be in effect, and the Hall/temp sensors will already have been read, so just
         // take a heart sensor reading and add it to the buffer
@@ -314,54 +386,92 @@ void loop() {
         // If enough samples have been taken, revert to 1 minute intervals
         if ( heartCount >= (heartSampleLength-1) ) {
           heartCount = 0; // reset for next sampling round        
-          writeState = WRITE_HEART; // switch to write SD state         
+          writeState = WRITE_HEART; // switch to write SD state 
+          lasttimestamp = MCP7940.now(); // Store last time stamp of fast sampling run        
         }  
+    }
     break;
 
 
     case STATE_SHUTDOWN:
+    {
         // If you arrive here due to too many low battery voltage readings, 
         // turn off the RTC alarm, detach the interrupt, close all files, and let the 
         // device go into sleep mode one more time (permanently)
+        Serial.println("Oops, shutdown"); delay(10);
         detachInterrupt(digitalPinToInterrupt(20)); // Remove the current 1 minute interrupt
         MCP7940.setSQWState(false); // turn off square wave output if currently on
         RTC.PITINTCTRL &= ~RTC_PI_bm; /* Periodic Interrupt: disabled, cancels 8Hz wakeup */
         MCP7940.setAlarmState(0, false); // Deactivate alarm
         // Now allow cpu to re-enter sleep at the end of the main loop
+    }
     break;
   }   // end of mainState switch block
 
 
   switch (writeState){
-    case(WRITE_NOTHING):
+    case WRITE_NOTHING:
         // Do nothing here, it's not time to write any data to SD
     break;
-    case(WRITE_HALL_TEMP_VOLTS):
+    case WRITE_HALL_TEMP_VOLTS:
       // You arrive here because the hall sensor, temperature and battery
       // voltage have all been sampled. Write them to SD
-      
+      Serial.println("Write gape, temp, volts"); delay(8);
       //TODO: Write hall, temperature, battery voltage to SD
-
+      if (now.day() != oldday1) {
+        GAPEFile.close(); // close old file
+        // Open new file
+        initGapeFileName(sd, GAPEFile, now, gapefilename, serialValid, serialNumber);
+        oldday1 = now.day(); // update oldday1
+      }
+      writeGapeToSD(now); // Write Hall, temp, battery volts to SD card
+      
       // Reset to write-nothing state 
       writeState = WRITE_NOTHING;
       // The main state could be going back to 1-minute intervals or switching
       // to fast sampling heart rate, depending on what happened in the 
-      // mainState switch above. 
+      // mainState switch above. Check which state we're in to decide what to do next 
+      switch(mainState){
+        // If we've arrived here and are switching to fast sample, activate the PIT timer
+        case (STATE_FAST_SAMPLE):
+          firsttimestamp = MCP7940.now(); // store value for start of IR samples
+          detachInterrupt(digitalPinToInterrupt(20)); // Remove the current 1 minute interrupt
+          MCP7940sqw32768(); // Reactivate the RTC's 32.768kHz clock output
+          PIT_init(); // set up the Periodic Interrupt Timer to wake at 8Hz (BivalveBitlib)
+          sei();  // enable global interrupts
+        break;
+        
+        case (STATE_1MINUTE_SLEEP):
+          // If we've arrived here and it's remaining a 1-minute sleep interval, do nothing      
+        break;
+        default:
+          // Do nothing in the default case
+        break;
+      }
     break;
 
-    case(WRITE_HEART):
+    case WRITE_HEART:
       // You arrive here after doing the fast heart rate samples and filling the
       // buffer. Write those data to the SD card heart rate file, and then 
       // reset the mainState to 1-minute intervals
+      Serial.println("Write heart data"); delay(8);
+      if (firsttimestamp.day() != oldday2){
+        IRFile.close();
+        initHeartFileName(sd, IRFile, firsttimestamp, heartfilename, serialValid, serialNumber);
+        oldday2 = firsttimestamp.day(); // update oldday2
+      }
       
-      // TODO: Write IR data to SD card
-      
+      writeHeartToSD(firsttimestamp,lasttimestamp); // write IR data to SD card
       // Revert to 1-minute wake interrupts, disable 8Hz PIT interrupts
       mainState = STATE_1MINUTE_SLEEP; // reset to 1 minute sleep interval
       writeState = WRITE_NOTHING; // reset to write-nothing state 
       RTC.PITINTCTRL &= ~RTC_PI_bm; /* Periodic Interrupt: disabled, cancels 8Hz wakeup */ 
       MCP7940Alarm1Minute(MCP7940.now()); // Reset 1 minute alarm
       attachInterrupt(digitalPinToInterrupt(20),RTC1MinuteInterrupt, CHANGE); // pin 20 to RTC
+    break;
+
+    default:
+      // Nothing in default case
     break;
   } // end of writeState switch statement
 
@@ -424,4 +534,68 @@ void MCP7940sqw32768(){
   // Turn on the square wave output pin of the RTC chip
   MCP7940.setSQWSpeed(3); // set SQW frequency (0=1Hz, 1 = 4.096kHz, 2 = 8.192kHz, 3 = 32.768kHz)
   MCP7940.setSQWState(true); // turn on the square wave output pin
+}
+
+
+//------------- writeGapeToSD -----------------------------------------------
+// writeGapeToSD function. This formats the available data in the
+// data arrays and writes them to the SD card file in a
+// comma-separated value format.
+void writeGapeToSD (DateTime timestamp) {
+  // Reopen logfile. If opening fails, notify the user
+  if (!GAPEFile.isOpen()) {
+    if (!GAPEFile.open(gapefilename, O_RDWR | O_CREAT | O_AT_END)) {
+      digitalWrite(REDLED, HIGH); // turn on error LED
+    }
+  }
+  // Write the unixtime
+  GAPEFile.print(timestamp.unixtime(), DEC);GAPEFile.print(F(",")); // POSIX time value
+  printTimeToSD(GAPEFile, timestamp); GAPEFile.print(F(","));// human-readable time stamp
+  GAPEFile.print(serialNumber); GAPEFile.print(F(",")); // Serial number
+  GAPEFile.print(HallValue); GAPEFile.print(F(","));  // Hall sensor value
+  GAPEFile.print(tempC); GAPEFile.print(F(","));      // Temperature sensor value
+  GAPEFile.print(batteryVolts); GAPEFile.print(F(",")); // Battery voltage
+  GAPEFile.println();
+  // GAPEFile.close(); // force the buffer to empty
+  GAPEFile.timestamp(T_WRITE, timestamp.year(),timestamp.month(), \
+      timestamp.day(),timestamp.hour(),timestamp.minute(),timestamp.second());
+  
+}
+
+
+//------------- writeHeartToSD -----------------------------------------------
+// writeHeartToSD function. This formats the available data in the
+// data arrays and writes them to the SD card file in a
+// comma-separated value format.
+void writeHeartToSD (DateTime firsttimestamp, DateTime lasttimestamp) {
+  // Reopen logfile. If opening fails, notify the user
+  if (!IRFile.isOpen()) {
+    if (!IRFile.open(heartfilename, O_RDWR | O_CREAT | O_AT_END)) {
+      digitalWrite(REDLED, HIGH); // turn on error LED
+    }
+  }
+  for (unsigned int bufferIndex = 0; bufferIndex < heartSampleLength; bufferIndex++){
+      if (bufferIndex == 0) {
+        // For first value in buffer, write first time stamp
+        IRFile.print(firsttimestamp.unixtime(), DEC); IRFile.print(F(","));// POSIX time value
+        printTimeToSD(IRFile, firsttimestamp); IRFile.print(F(",")); // Human readable date time
+        IRFile.print(serialNumber); IRFile.print(F(",")); // Serial number
+        IRFile.println(heartBuffer[bufferIndex]);         // Heart IR value
+      } else if ( (bufferIndex > 0) & (bufferIndex < (heartSampleLength - 1)) ){
+        IRFile.print(",,,"); // write empty time values for most heart values
+        IRFile.println(heartBuffer[bufferIndex]);         // Heart IR value
+      } else if (bufferIndex == (heartSampleLength - 1) ){
+        // For last value in buffer, write last time stamp
+        IRFile.print(lasttimestamp.unixtime(), DEC); IRFile.print(F(","));// POSIX time value
+        printTimeToSD(IRFile, lasttimestamp); IRFile.print(F(",")); // Human readable date time
+        IRFile.print(serialNumber); IRFile.print(F(",")); // Serial number
+        IRFile.println(heartBuffer[bufferIndex]);
+      } 
+    
+  }
+  // IRFile.close(); // force the buffer to empty
+
+  IRFile.timestamp(T_WRITE, lasttimestamp.year(),lasttimestamp.month(), \
+      lasttimestamp.day(),lasttimestamp.hour(),lasttimestamp.minute(),lasttimestamp.second());
+  
 }
