@@ -34,7 +34,7 @@
 unsigned int heartMinute = 2; 
 unsigned int heartSampleLength = 240; // Number of heart samples to take in 1 minute
 unsigned int heartCount = 0; // Current number of heart samples taken in this minute
-unsigned int heartBuffer[240] = {0}; // 
+int16_t heartBuffer[240] = {0}; // 
 
 bool writeSDgapeTempVoltage = false; // Flag to 
 
@@ -232,18 +232,20 @@ void setup() {
     digitalWrite(GRNLED,HIGH);
     delay(100);
   }
-  vcnl4040.enableAmbientLight(false);
-  vcnl4040.enableWhiteLight(false);
-  vcnl4040.enableProximity(true);
-  vcnl4040.setProximityHighResolution(true);
+  vcnl4040.enableAmbientLight(false);  // disable ambient light sensor
+  vcnl4040.enableAmbientLightInterrupts(false); // disable ambient light interrupt
+  vcnl4040.enableWhiteLight(false); // disable white light sensor
+  vcnl4040.enableProximityInterrupts(VCNL4040_PROXIMITY_INT_DISABLE); // disable proximity sensor interrupt
+  vcnl4040.enableProximity(false); // turn off IR sensor for right now
+  vcnl4040.setProximityHighResolution(true); // set to 16bit resolution (vs. 12bit)
   // Setting VCNL4040_LED_DUTY_1_40 gives shortest proximity measurement time (about 4.85ms)
-  vcnl4040.setProximityLEDDutyCycle(VCNL4040_LED_DUTY_1_40); // 1_40, 1_80,1_160,1_320
+  vcnl4040.setProximityLEDDutyCycle(VCNL4040_LED_DUTY_1_320); // 1_40, 1_80,1_160,1_320
   vcnl4040.setProximityLEDCurrent(VCNL4040_LED_CURRENT_50MA); // 50,75,100,120,140,160,180,200
   // Setting VCNL4040_PROXIMITY_INTEGRATION_TIME_1T gives the shortest pulse (lowest LED output)
   // in combination with the LED_CURRENT setting above. A longer integration time like
   // VCNL4040_PROXIMITY_INTEGRATION_TIME_8T raises the pulse length (higher LED output) in
   // combination with the LED_CURRENT setting.
-  vcnl4040.setProximityIntegrationTime(VCNL4040_PROXIMITY_INTEGRATION_TIME_1T); // 1T,1_5T,2T,2_5T,3T,3_5T,4T,8T
+  vcnl4040.setProximityIntegrationTime(VCNL4040_PROXIMITY_INTEGRATION_TIME_8T); // 1T,1_5T,2T,2_5T,3T,3_5T,4T,8T
   delay(200);   
   //------------------------------------------------------------------
   if (TMP117sensor.begin() == true) // Check if the sensor will correctly self-identify with the proper Device ID/Address
@@ -377,17 +379,21 @@ void loop() {
         // Write the heart data to file, reset the wakeup alarm to 1 minute intervals 
 
         // TODO: Take heart sensor sample, add it to the buffer
-        digitalWrite(VREG_EN, HIGH); // set high to enable voltage regulator
+//        digitalWrite(VREG_EN, HIGH); // set high to enable voltage regulator
+        vcnl4040.enableProximity(true); // turn on the VCNL4040 heart sensor
         
+        heartBuffer[heartCount] = vcnl4040.getProximity();
         ++heartCount; // Increment heart sample counter
-
-        digitalWrite(VREG_EN, LOW); // set low to disable voltage regulator
+        
+        vcnl4040.enableProximity(false); // turn off the VCNL4040 heart sensor
+//        digitalWrite(VREG_EN, LOW); // set low to disable voltage regulator
         
         // If enough samples have been taken, revert to 1 minute intervals
-        if ( heartCount >= (heartSampleLength-1) ) {
+        if ( heartCount > (heartSampleLength-1) ) {
           heartCount = 0; // reset for next sampling round        
           writeState = WRITE_HEART; // switch to write SD state 
           lasttimestamp = MCP7940.now(); // Store last time stamp of fast sampling run        
+          digitalWrite(VREG_EN, LOW); // set low to disable voltage regulator
         }  
     }
     break;
@@ -399,6 +405,7 @@ void loop() {
         // turn off the RTC alarm, detach the interrupt, close all files, and let the 
         // device go into sleep mode one more time (permanently)
         Serial.println("Oops, shutdown"); delay(10);
+        digitalWrite(VREG_EN, LOW); // set low to disable voltage regulator
         detachInterrupt(digitalPinToInterrupt(20)); // Remove the current 1 minute interrupt
         MCP7940.setSQWState(false); // turn off square wave output if currently on
         RTC.PITINTCTRL &= ~RTC_PI_bm; /* Periodic Interrupt: disabled, cancels 8Hz wakeup */
@@ -434,11 +441,14 @@ void loop() {
       switch(mainState){
         // If we've arrived here and are switching to fast sample, activate the PIT timer
         case (STATE_FAST_SAMPLE):
+          
           firsttimestamp = MCP7940.now(); // store value for start of IR samples
           detachInterrupt(digitalPinToInterrupt(20)); // Remove the current 1 minute interrupt
+          digitalWrite(VREG_EN, HIGH); // set high to enable voltage regulator
           MCP7940sqw32768(); // Reactivate the RTC's 32.768kHz clock output
           PIT_init(); // set up the Periodic Interrupt Timer to wake at 8Hz (BivalveBitlib)
           sei();  // enable global interrupts
+          // head to end of main loop to go to sleep
         break;
         
         case (STATE_1MINUTE_SLEEP):
