@@ -1,7 +1,6 @@
 /* BivalveBit_logger2.ino
  *  Draft of a BivalveBit data logger program with sleep modes and
  *  state machine to run things
- *  TODO: Read from IR sensor into buffer
  *  TODO: Figure out why the thing is in a reboot loop when the OLED
  *  isn't present. Maybe a capacitance/voltage droop issue on the I2C bus
  *  Seems to work on battery, but not on FTDI alone
@@ -34,9 +33,9 @@
 unsigned int heartMinute = 2; 
 unsigned int heartSampleLength = 240; // Number of heart samples to take in 1 minute
 unsigned int heartCount = 0; // Current number of heart samples taken in this minute
-int16_t heartBuffer[240] = {0}; // 
+uint16_t heartBuffer[240] = {0}; // 
 
-bool writeSDgapeTempVoltage = false; // Flag to 
+
 
 // -------------------------------------------
 // ***** STATE MACHINE TYPE DEFINITIONS *****
@@ -161,8 +160,8 @@ ISR(RTC_PIT_vect)
 {
     /* You must clear PIT interrupt flag by writing '1': */
     RTC.PITINTFLAGS = RTC_PI_bm;
-    PORTD.OUTTGL |= PIN2_bm; // Toggle PD2 (probe with scope/analyzer)
-    PORTC.OUTTGL |= PIN0_bm; // BivalveBit green led on pin PC0 
+//    PORTD.OUTTGL |= PIN2_bm; // Toggle PD2 (probe with scope/analyzer)
+//    PORTC.OUTTGL |= PIN0_bm; // BivalveBit green led on pin PC0 
 }
 
 
@@ -232,21 +231,10 @@ void setup() {
     digitalWrite(GRNLED,HIGH);
     delay(100);
   }
-  vcnl4040.enableAmbientLight(false);  // disable ambient light sensor
-  vcnl4040.enableAmbientLightInterrupts(false); // disable ambient light interrupt
-  vcnl4040.enableWhiteLight(false); // disable white light sensor
-  vcnl4040.enableProximityInterrupts(VCNL4040_PROXIMITY_INT_DISABLE); // disable proximity sensor interrupt
-  vcnl4040.enableProximity(false); // turn off IR sensor for right now
-  vcnl4040.setProximityHighResolution(true); // set to 16bit resolution (vs. 12bit)
-  // Setting VCNL4040_LED_DUTY_1_40 gives shortest proximity measurement time (about 4.85ms)
-  vcnl4040.setProximityLEDDutyCycle(VCNL4040_LED_DUTY_1_320); // 1_40, 1_80,1_160,1_320
-  vcnl4040.setProximityLEDCurrent(VCNL4040_LED_CURRENT_50MA); // 50,75,100,120,140,160,180,200
-  // Setting VCNL4040_PROXIMITY_INTEGRATION_TIME_1T gives the shortest pulse (lowest LED output)
-  // in combination with the LED_CURRENT setting above. A longer integration time like
-  // VCNL4040_PROXIMITY_INTEGRATION_TIME_8T raises the pulse length (higher LED output) in
-  // combination with the LED_CURRENT setting.
-  vcnl4040.setProximityIntegrationTime(VCNL4040_PROXIMITY_INTEGRATION_TIME_8T); // 1T,1_5T,2T,2_5T,3T,3_5T,4T,8T
-  delay(200);   
+
+  setupVCNL4040(); // See function at bottom of program, takes approx 60ms
+  vcnl4040.enableProximity(false);
+    
   //------------------------------------------------------------------
   if (TMP117sensor.begin() == true) // Check if the sensor will correctly self-identify with the proper Device ID/Address
   {
@@ -284,7 +272,7 @@ void setup() {
   // Initialize two data files
   initHeartFileName(sd, IRFile, now, heartfilename, serialValid, serialNumber);
   initGapeFileName(sd, GAPEFile, now, gapefilename, serialValid, serialNumber);
-  
+  digitalWrite(REDLED, HIGH); // turn off
   MCP7940Alarm1Minute(now); // Set RTC multifunction pin to alarm when new minute hits
   attachInterrupt(digitalPinToInterrupt(20),RTC1MinuteInterrupt, CHANGE); // pin 20 to RTC
   
@@ -300,7 +288,7 @@ void setup() {
 //----------------- Main loop
 //--------------------------------------------------------------------
 void loop() {
-  
+//        unsigned long m1 = millis();  
 
   switch(mainState) {
     case STATE_1MINUTE_SLEEP:
@@ -334,7 +322,7 @@ void loop() {
           tempC = TMP117sensor.readTempC(); // retrieve the temperature value
           TMP117sensor.setShutdownMode(); // put into low power mode
           digitalWrite(VREG_EN, LOW); // set low to turn off after sampling
-          Serial.print("Sampling time ms: "); Serial.println(millis() - firstmillis);delay(10);
+//          Serial.print("Temp sampling time ms: "); Serial.println(millis() - firstmillis);delay(10);
         
         // Check time, decide what kind of wake interval and sampling to proceed with
         if ( now.minute() % heartMinute == 0) {
@@ -362,7 +350,7 @@ void loop() {
             mainState = STATE_SHUTDOWN;
             writeState = WRITE_HALL_TEMP_VOLTS;
           }
-          Serial.println("Staying in 1 minute sleep loop"); delay(10);
+//          Serial.println("Staying in 1 minute sleep loop"); delay(10);
           // Re-enable 1-minute wakeup interrupt
           attachInterrupt(digitalPinToInterrupt(20),RTC1MinuteInterrupt, CHANGE); // pin 20 to RTC          
         }
@@ -375,18 +363,23 @@ void loop() {
         // be in effect, and the Hall/temp sensors will already have been read, so just
         // take a heart sensor reading and add it to the buffer
         // Keep count of how many times you visit this section, and revert to 
-        // STATE_1MINUTE_SLEEP after you've taken enough heart readings (30 seconds)
-        // Write the heart data to file, reset the wakeup alarm to 1 minute intervals 
+        // STATE_1MINUTE_SLEEP after you've taken enough heart readings (30 seconds) 
 
-        // TODO: Take heart sensor sample, add it to the buffer
-//        digitalWrite(VREG_EN, HIGH); // set high to enable voltage regulator
-        vcnl4040.enableProximity(true); // turn on the VCNL4040 heart sensor
-        
-        heartBuffer[heartCount] = vcnl4040.getProximity();
+        // Take heart sensor sample, add it to the buffer
+        digitalWrite(VREG_EN, HIGH); // set high to enable voltage regulator
+        bitWrite(PORTC.OUT, 0, 0); // Set PC0 low to turn on green LED
+        delayMicroseconds(150); // Give voltage regulator time to stabilize
+        bitWrite(PORTC.OUT, 0, 1); // Turn off PC0 by setting pin high
+        setupVCNL4040(); // consumes about 60ms of time, so only usable at 8Hz or slower sample rate
+        heartBuffer[heartCount] = vcnl4040.getProximity();        
         ++heartCount; // Increment heart sample counter
+        digitalWrite(VREG_EN, LOW); // set low to disable voltage regulator
+//        vcnl4040.enableProximity(false); // turn off the VCNL4040 heart sensor
         
-        vcnl4040.enableProximity(false); // turn off the VCNL4040 heart sensor
-//        digitalWrite(VREG_EN, LOW); // set low to disable voltage regulator
+//        Serial.println(heartBuffer[heartCount-1]);
+//        delay(5);
+        
+
         
         // If enough samples have been taken, revert to 1 minute intervals
         if ( heartCount > (heartSampleLength-1) ) {
@@ -423,15 +416,16 @@ void loop() {
     case WRITE_HALL_TEMP_VOLTS:
       // You arrive here because the hall sensor, temperature and battery
       // voltage have all been sampled. Write them to SD
-      Serial.println("Write gape, temp, volts"); delay(8);
-      //TODO: Write hall, temperature, battery voltage to SD
+//      Serial.println("Write gape, temp, volts"); delay(8);
+      // Check if a new day has started, start a new data file if so.
       if (now.day() != oldday1) {
         GAPEFile.close(); // close old file
         // Open new file
         initGapeFileName(sd, GAPEFile, now, gapefilename, serialValid, serialNumber);
         oldday1 = now.day(); // update oldday1
       }
-      writeGapeToSD(now); // Write Hall, temp, battery volts to SD card
+      // Write hall, temperature, battery voltage to SD
+      writeGapeToSD(now); // See function at bottom of program
       
       // Reset to write-nothing state 
       writeState = WRITE_NOTHING;
@@ -441,10 +435,11 @@ void loop() {
       switch(mainState){
         // If we've arrived here and are switching to fast sample, activate the PIT timer
         case (STATE_FAST_SAMPLE):
-          
           firsttimestamp = MCP7940.now(); // store value for start of IR samples
           detachInterrupt(digitalPinToInterrupt(20)); // Remove the current 1 minute interrupt
-          digitalWrite(VREG_EN, HIGH); // set high to enable voltage regulator
+//          digitalWrite(VREG_EN, HIGH); // set high to enable voltage regulator here if you wanted to 
+                                        // make sure it's running at the very start of the fast sampling
+//          setupVCNL4040(); // reset the IR sensor after power-up of the voltage regulator
           MCP7940sqw32768(); // Reactivate the RTC's 32.768kHz clock output
           PIT_init(); // set up the Periodic Interrupt Timer to wake at 8Hz (BivalveBitlib)
           sei();  // enable global interrupts
@@ -464,7 +459,8 @@ void loop() {
       // You arrive here after doing the fast heart rate samples and filling the
       // buffer. Write those data to the SD card heart rate file, and then 
       // reset the mainState to 1-minute intervals
-      Serial.println("Write heart data"); delay(8);
+//      Serial.println("Write heart data"); delay(8);
+      // Check if a new day has started, if so open a new file
       if (firsttimestamp.day() != oldday2){
         IRFile.close();
         initHeartFileName(sd, IRFile, firsttimestamp, heartfilename, serialValid, serialNumber);
@@ -490,7 +486,7 @@ void loop() {
    *  to the top of the main loop to check the time and decide what
    *  to do next in the mainState chunk
    */
-
+//  Serial.print( (millis() - m1) ); Serial.println(" <- cycle time"); delay(8);
   sleep_cpu(); 
 //  detachInterrupt(digitalPinToInterrupt(20));
 }     // end main loop
@@ -500,7 +496,7 @@ void loop() {
 // Interrupt for pin 20, connected to RTC MFP
 // Used for the 1-minute alarms
 void RTC1MinuteInterrupt() {
-//  PORTC_OUTTGL |= PIN0_bm; // Toggle LED on pin PC0 (Arduino pin 8, GRNLED)
+  // Do nothing, this just wakes the microcontroller from sleep
 }
 
 
@@ -608,4 +604,27 @@ void writeHeartToSD (DateTime firsttimestamp, DateTime lasttimestamp) {
   IRFile.timestamp(T_WRITE, lasttimestamp.year(),lasttimestamp.month(), \
       lasttimestamp.day(),lasttimestamp.hour(),lasttimestamp.minute(),lasttimestamp.second());
   
+}
+
+
+
+//-------------------------------------------------------
+// (re)initialize VCNL4040 IR sensor
+//------------------------------------------------------
+void setupVCNL4040(){
+  vcnl4040.enableAmbientLight(false);  // disable ambient light sensor
+  vcnl4040.enableAmbientLightInterrupts(false); // disable ambient light interrupt
+  vcnl4040.enableWhiteLight(false); // disable white light sensor
+  vcnl4040.enableProximityInterrupts(VCNL4040_PROXIMITY_INT_DISABLE); // disable proximity sensor interrupt
+  
+  vcnl4040.setProximityHighResolution(true); // set to 16bit resolution (vs. 12bit)
+  // Setting VCNL4040_LED_DUTY_1_40 gives shortest proximity measurement time (about 4.85ms)
+  vcnl4040.setProximityLEDDutyCycle(VCNL4040_LED_DUTY_1_40); // 1_40, 1_80,1_160,1_320
+  vcnl4040.setProximityLEDCurrent(VCNL4040_LED_CURRENT_50MA); // 50,75,100,120,140,160,180,200
+  // Setting VCNL4040_PROXIMITY_INTEGRATION_TIME_1T gives the shortest pulse (lowest LED output)
+  // in combination with the LED_CURRENT setting above. A longer integration time like
+  // VCNL4040_PROXIMITY_INTEGRATION_TIME_8T raises the pulse length (higher LED output) in
+  // combination with the LED_CURRENT setting.
+  vcnl4040.setProximityIntegrationTime(VCNL4040_PROXIMITY_INTEGRATION_TIME_8T); // 1T,1_5T,2T,2_5T,3T,3_5T,4T,8T
+  vcnl4040.enableProximity(true); // turn on IR sensor for right now
 }
