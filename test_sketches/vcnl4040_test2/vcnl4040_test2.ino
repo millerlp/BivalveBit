@@ -45,11 +45,13 @@ void setup() {
   
 
   vcnl4040.enableAmbientLight(false);
+  vcnl4040.enableAmbientLightInterrupts(false); // disable ambient light interrupt
   vcnl4040.enableWhiteLight(false);
-  vcnl4040.enableProximity(true);
+  vcnl4040.enableProximityInterrupts(VCNL4040_PROXIMITY_INT_DISABLE); // disable proximity sensor interrupt
+  vcnl4040.enableProximity(false);
   vcnl4040.setProximityHighResolution(true);
   // Setting VCNL4040_LED_DUTY_1_40 gives shortest proximity measurement time (about 4.85ms)
-  vcnl4040.setProximityLEDDutyCycle(VCNL4040_LED_DUTY_1_320); // 1_40, 1_80,1_160,1_320
+  vcnl4040.setProximityLEDDutyCycle(VCNL4040_LED_DUTY_1_40); // 1_40, 1_80,1_160,1_320
   vcnl4040.setProximityLEDCurrent(VCNL4040_LED_CURRENT_50MA); // 50,75,100,120,140,160,180,200
   // Setting VCNL4040_PROXIMITY_INTEGRATION_TIME_1T gives the shortest pulse (lowest LED output)
   // in combination with the LED_CURRENT setting above. A longer integration time like
@@ -130,10 +132,11 @@ void loop() {
 //    digitalWrite(VREG_EN, HIGH); // high to turn on 
     vcnl4040.enableProximity(true); // turn on the VCNL4040 heart sensor
 //    delay(114); // seems to take at least 113ms for the VCNL to return a valid value after power-on
-    int16_t vcnlValue = vcnl4040.getProximity();
+    uint16_t vcnlValue = vcnl4040.getProximity();
+    Serial.println(vcnlValue);
     vcnl4040.enableProximity(false); // turn off the VCNL4040 heart sensor
 //    digitalWrite(VREG_EN, LOW); // low to turn off 
-    Serial.println(vcnlValue);
+    
   }
   
 //  Serial.print("Proximity:"); 
