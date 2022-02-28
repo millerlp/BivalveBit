@@ -9,6 +9,11 @@
  as the A1395 Hall effect sensor (with SLEEP pin on the 4th wire). 
  * Writes data to a standard microSD card
  
- Hardware design files were originally created in KiCad 5.1. 
+ Hardware design files for the main board were originally created in KiCad 5.1, 
+ in the directory BivalveBit_RevE.
+ 
+ Hardware design files for the heart rate (and temperature) sensor board
+ were created in Autodesk EAGLE 9.6, and are available in the 
+ Mussel_heartrate_RevC_EAGLE directory.
  
  
