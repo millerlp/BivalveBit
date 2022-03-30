@@ -8,7 +8,7 @@
  */
 
 
-#include "SdFat.h" // https://github.com/greiman/SdFat-beta (you must be using ver. 2.1.0 or higher)
+#include "SdFat.h" // https://github.com/greiman/SdFat (you must be using ver. 2.1.2 or higher)
 #include <Wire.h>  // built in library, for I2C communications
 #include <EEPROM.h>
 #include <avr/io.h>
@@ -68,8 +68,10 @@ const uint8_t SD_CHIP_SELECT = 7;
 #define MISO 5
 #define SCK 6
 SdFat sd; 
-File IRFile; //SD card object 1 (IR heart rate data)
-File GAPEFile; //SD card object 2 (Gape, Temp, Battery voltage data)
+//File IRFile; //SD card object 1 (IR heart rate data)
+//File GAPEFile; //SD card object 2 (Gape, Temp, Battery voltage data)
+SdFile IRFile; //SD card object 1 (IR heart rate data)
+SdFile GAPEFile; //SD card object 2 (Gape, Temp, Battery voltage data)
 bool SDfailFlag = false;
 // Placeholder serialNumber
 char serialNumber[] = "SN000";
