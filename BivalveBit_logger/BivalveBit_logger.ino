@@ -1,4 +1,4 @@
-/* BivalveBit_logger2.ino
+/* BivalveBit_logger.ino
  *  Draft of a BivalveBit data logger program with sleep modes and
  *  state machine to run things
  *  TODO: Figure out why the thing is in a reboot loop when the OLED
@@ -133,7 +133,7 @@ enum alarmTypes {
 float dividerRatio = 2; // Ratio of voltage divider (47k + 47k) / 47k = 2
 float refVoltage = 3.00; // Voltage at AREF pin on ATmega microcontroller, measured per board
 float batteryVolts = 0; // Estimated battery voltage returned from readBatteryVoltage function
-float minimumVoltage = 3.2; // Minimum safe voltage for a Li-Ion battery
+float minimumVoltage = 3.5; // Minimum safe voltage for a Li-Ion battery (3.2)
 unsigned int lowVoltageCount = 0; // Count how many times voltage is too low
 unsigned int lowVoltageCountLimit = 10; // Number of loops after which the program should be shutdown
 #define REDLED 11   // Red LED pin
@@ -310,13 +310,16 @@ void loop() {
         // then decide whether to switch to 8Hz fast sampling or stay in 1-minute sleep cycle
           unsigned long firstmillis = millis();
           digitalWrite(VREG_EN, HIGH); // set high to enable voltage regulator
+          bitWrite(PORTC.OUT, 0, 0); // Turn on PC0 by setting pin low (for testing purposes)
           TMP117sensor.setOneShotMode(); // start a temperature reading
           batteryVolts = readBatteryVoltage(BATT_MONITOR_EN, BATT_MONITOR,\
                                               dividerRatio, refVoltage);
-          HallValue = readWakeHall(ANALOG_IN, HALL_SLEEP);                                              
+          HallValue = readWakeHall(ANALOG_IN, HALL_SLEEP);     
+          bitWrite(PORTC.OUT, 0, 1); // Turn off PC0 by setting pin high (for testing purposes)                                         
 //          Serial.print("Battery: ");Serial.print(batteryVolts,2);Serial.println("V");delay(10);
           if (batteryVolts < minimumVoltage) {
             ++lowVoltageCount; // Increment the counter
+            digitalWrite(REDLED, LOW); delay(10); digitalWrite(REDLED, HIGH); // testing, comment out
           }
           while (!TMP117sensor.dataReady()){
             // do nothing during conversion
@@ -369,9 +372,9 @@ void loop() {
 
         // Take heart sensor sample, add it to the buffer
         digitalWrite(VREG_EN, HIGH); // set high to enable voltage regulator
-        bitWrite(PORTC.OUT, 0, 0); // Set PC0 low to turn on green LED
+//        bitWrite(PORTC.OUT, 0, 0); // Set PC0 low to turn on green LED
         delayMicroseconds(150); // Give voltage regulator time to stabilize
-        bitWrite(PORTC.OUT, 0, 1); // Turn off PC0 by setting pin high
+//        bitWrite(PORTC.OUT, 0, 1); // Turn off PC0 by setting pin high
         setupVCNL4040(); // consumes about 60ms of time, so only usable at 8Hz or slower sample rate
         heartBuffer[heartCount] = vcnl4040.getProximity();        
         ++heartCount; // Increment heart sample counter
@@ -451,6 +454,11 @@ void loop() {
         case (STATE_1MINUTE_SLEEP):
           // If we've arrived here and it's remaining a 1-minute sleep interval, do nothing      
         break;
+
+        case (STATE_SHUTDOWN):
+          // If the main state is now STATE_SHUTDOWN, do nothing here
+          Serial.println("Time to shutdown");
+        break;
         default:
           // Do nothing in the default case
         break;
@@ -489,7 +497,9 @@ void loop() {
    *  to do next in the mainState chunk
    */
 //  Serial.print( (millis() - m1) ); Serial.println(" <- cycle time"); delay(8);
+  Serial.println("Sleep"); delay(10);  // testing, comment out
   sleep_cpu(); 
+  Serial.println("Awake"); delay(10);   // testing, comment out
 //  detachInterrupt(digitalPinToInterrupt(20));
 }     // end main loop
 
@@ -562,7 +572,7 @@ void writeGapeToSD (DateTime timestamp) {
   GAPEFile.print(serialNumber); GAPEFile.print(F(",")); // Serial number
   GAPEFile.print(HallValue); GAPEFile.print(F(","));  // Hall sensor value
   GAPEFile.print(tempC); GAPEFile.print(F(","));      // Temperature sensor value
-  GAPEFile.print(batteryVolts); GAPEFile.print(F(",")); // Battery voltage
+  GAPEFile.print(batteryVolts,3); GAPEFile.print(F(",")); // Battery voltage
   GAPEFile.println();
   // GAPEFile.close(); // force the buffer to empty
   GAPEFile.timestamp(T_WRITE, timestamp.year(),timestamp.month(), \
