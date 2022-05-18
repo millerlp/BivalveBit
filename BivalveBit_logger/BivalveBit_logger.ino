@@ -1,6 +1,16 @@
 /* BivalveBit_logger.ino
  *  BivalveBit data logger program with sleep modes and
  *  state machine to run things
+ *  
+ *  Samples gape sensor and temperature every minute. Set the heart
+ *  sampling interval by changing the value for the variable heartMinute
+ *  below.
+ *  
+ *  If the device just slowly flashes red after startup, the real time clock
+ *  needs to be reset. Open the serial monitor and enter the correct date and
+ *  time (in the UTC time zone preferably) using the command format:
+ *  SETDATE YYYY-MM-DD HH:MM:SS
+ *  
  *  TODO: Figure out why the thing is in a reboot loop when the OLED
  *  isn't present. Maybe a capacitance/voltage droop issue on the I2C bus
  *  Seems to work on battery, but not on FTDI alone
@@ -30,7 +40,7 @@
  *  A value of 2 would sample every even-numbered minute
  *  A value of 5 would sample every 5 minutes
  */
-unsigned int heartMinute = 2; 
+unsigned int heartMinute = 5; 
 unsigned int heartSampleLength = 240; // Number of heart samples to take in 1 minute
 unsigned int heartCount = 0; // Current number of heart samples taken in this minute
 uint16_t heartBuffer[240] = {0}; // 
@@ -257,24 +267,53 @@ void setup() {
   digitalWrite(VREG_EN, LOW); // set low to turn off voltage regulator
   //--------------------------------------------------------------
   MCP7940setup();
+  // Turn on battery backup, default is off
+  MCP7940.setBattery(true); // enable battery backup mode
+  Serial.print("Battery Backup mode is ");
+  if (MCP7940.getBattery()) {
+   Serial.println("enabled.");
+  } else {
+   Serial.println("disabled.");
+  }
   now = MCP7940.now();  // get the current time
   // Use sprintf() to pretty print date/time with leading zeroes
   sprintf(inputBuffer, "%04d-%02d-%02d %02d:%02d:%02d", now.year(), now.month(), now.day(),
           now.hour(), now.minute(), now.second());
   Serial.print("Date/Time: "); Serial.println(inputBuffer);
-  // Check that real time clock has a reasonable time value
-  if ( (now.year() < 2022) | (now.year() > 2035) ) {
-     // Error, clock isn't set
-     while(1){
-      digitalWrite(REDLED, !digitalRead(REDLED));
-      delay(100);
-     }
+  
+  bool clockErrorFlag = true;
+  while (clockErrorFlag){
+    // Check that real time clock has a reasonable time value
+    if ( (now.year() < 2022) | (now.year() > 2035) ) {
+        Serial.println("Please set clock to current UTC time");
+        Serial.println("Use format SETDATE YYYY-MM-DD HH:MM:SS");
+       // Error, clock isn't set
+       while(clockErrorFlag){
+        digitalWrite(REDLED, !digitalRead(REDLED));
+        delay(500);
+        readCommand();
+        now = MCP7940.now();  // get the updated time
+        if ( (now.year() >= 2022) & (now.year() <= 2035) ){
+          // If the year is now within bounds, break out of this while statement
+          clockErrorFlag = false;
+          sprintf(inputBuffer, "%04d-%02d-%02d %02d:%02d:%02d", now.year(), now.month(), now.day(),
+            now.hour(), now.minute(), now.second());
+          Serial.print("Date/Time: "); Serial.println(inputBuffer);
+          break;
+        }
+        
+       }
+    } else {
+      // If the time's year was in bound, continue with the program
+      clockErrorFlag = false;
+    }
   }
   oldday1 = oldday2 = now.day(); // Store current day's value
   // Initialize two data files
   initHeartFileName(sd, IRFile, now, heartfilename, serialValid, serialNumber);
   initGapeFileName(sd, GAPEFile, now, gapefilename, serialValid, serialNumber);
   digitalWrite(REDLED, HIGH); // turn off
+  Serial.print("Heart sample interval: "); Serial.print(heartMinute); Serial.println(" minutes");
   MCP7940Alarm1Minute(now); // Set RTC multifunction pin to alarm when new minute hits
   attachInterrupt(digitalPinToInterrupt(20),RTC1MinuteInterrupt, CHANGE); // pin 20 to RTC
   
@@ -528,7 +567,7 @@ void MCP7940setup() {
 void MCP7940Alarm1Minute(DateTime currentTime){
   MCP7940.setSQWState(false); // turn off square wave output if currently on
   MCP7940.setAlarmPolarity(false); // pin goes low when alarm is triggered
-  Serial.println("Setting alarm 0 for every minute at 0 seconds.");
+  Serial.println("Setting alarm for every minute at 0 seconds.");
   MCP7940.setAlarm(0, matchSeconds, currentTime - TimeSpan(0, 0, 0, currentTime.second()),
                    true);  // Match once a minute at 0 seconds
   delay(10);
@@ -630,3 +669,89 @@ void setupVCNL4040(){
   vcnl4040.setProximityIntegrationTime(VCNL4040_PROXIMITY_INTEGRATION_TIME_8T); // 1T,1_5T,2T,2_5T,3T,3_5T,4T,8T
   vcnl4040.enableProximity(true); // turn on IR sensor for right now
 }
+
+
+/***************************************************************************************************
+** Method readCommand(). This function checks the serial port to see if there has been any input. **
+** If there is data it is read until a terminator is discovered and then the command is parsed    **
+** and acted upon                                                                                 **
+***************************************************************************************************/
+void readCommand() {
+  static uint8_t inputBytes = 0;              // Variable for buffer position
+  while (Serial.available()) {                // Loop while incoming serial data
+    inputBuffer[inputBytes] = Serial.read();  // Get the next byte of data
+    if (inputBuffer[inputBytes] != '\n' &&
+        inputBytes < SPRINTF_BUFFER_SIZE)  // keep on reading until a newline
+      inputBytes++;                        // shows up or the buffer is full
+    else {
+      inputBuffer[inputBytes] = 0;                 // Add the termination character
+      for (uint8_t i = 0; i < inputBytes; i++)     // Convert the whole input buffer
+        inputBuffer[i] = toupper(inputBuffer[i]);  // to uppercase characters
+      Serial.print(F("\nCommand \""));
+      Serial.write(inputBuffer);
+      Serial.print(F("\" received.\n"));
+      /**********************************************************************************************
+      ** Parse the single-line command and perform the appropriate action. The current list of **
+      ** commands understood are as follows: **
+      ** **
+      ** SETDATE      - Set the device time **
+      ** CALDATE      - Calibrate device time **
+      ** **
+      **********************************************************************************************/
+      enum commands { SetDate, CalDate, Unknown_Command };  // of commands enumerated type
+      commands command;                                     // declare enumerated type
+      char     workBuffer[10];                              // Buffer to hold string compare
+      sscanf(inputBuffer, "%s %*s", workBuffer);            // Parse the string for first word
+      if (!strcmp(workBuffer, "SETDATE"))
+        command = SetDate;  // Set command number when found
+      else if (!strcmp(workBuffer, "CALDATE"))
+        command = CalDate;  // Set command number when found
+      else
+        command = Unknown_Command;                              // Otherwise set to not found
+      uint16_t tokens, year, month, day, hour, minute, second;  // Variables to hold parsed dt/tm
+      switch (command) {                                        // Action depending upon command
+        /*******************************************************************************************
+        ** Set the device time and date                                                           **
+        *******************************************************************************************/
+        case SetDate:  // Set the RTC date/time
+          tokens = sscanf(inputBuffer, "%*s %hu-%hu-%hu %hu:%hu:%hu;", &year, &month, &day, &hour,
+                          &minute, &second);
+          if (tokens != 6)  // Check to see if it was parsed
+            Serial.print(F("Unable to parse date/time\n"));
+          else {
+            MCP7940.adjust(
+                DateTime(year, month, day, hour, minute, second));  // Adjust the RTC date/time
+            Serial.println(F("Date has been set."));
+          }       // of if-then-else the date could be parsed
+          break;  //
+        /*******************************************************************************************
+        ** Calibrate the RTC and reset the time                                                   **
+        *******************************************************************************************/
+        case CalDate:  // Calibrate the RTC
+          tokens = sscanf(inputBuffer,
+                          "%*s %hu-%hu-%hu %hu:%hu:%hu;",  // Use sscanf() to parse the date/
+                          &year, &month, &day, &hour, &minute, &second);  // time into variables
+          if (tokens != 6)  // Check to see if it was parsed
+            Serial.print(F("Unable to parse date/time\n"));
+          else {
+            int8_t trim =
+                MCP7940.calibrate(DateTime(year, month, day,  // Calibrate the crystal and return
+                                           hour, minute, second));  // the new trim offset value
+            Serial.print(F("Trim value set to "));
+            Serial.print(trim * 2);  // Each trim tick is 2 cycles
+            Serial.println(F(" clock cycles every minute"));
+          }  // of if-then-else the date could be parsed
+          break;
+        /*******************************************************************************************
+        ** Unknown command                                                                        **
+        *******************************************************************************************/
+        case Unknown_Command:  // Show options on bad command
+        default:
+          Serial.println(F("Unknown command. Valid commands are:"));
+          Serial.println(F("SETDATE yyyy-mm-dd hh:mm:ss"));
+          Serial.println(F("CALDATE yyyy-mm-dd hh:mm:ss"));
+      }                // of switch statement to execute commands
+      inputBytes = 0;  // reset the counter
+    }                  // of if-then-else we've received full command
+  }                    // of if-then there is something in our input buffer
+}  // of method readCommand
