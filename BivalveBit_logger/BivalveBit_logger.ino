@@ -601,7 +601,7 @@ void writeGapeToSD (DateTime timestamp) {
   GAPEFile.print(serialNumber); GAPEFile.print(F(",")); // Serial number
   GAPEFile.print(HallValue); GAPEFile.print(F(","));  // Hall sensor value
   GAPEFile.print(tempC); GAPEFile.print(F(","));      // Temperature sensor value
-  GAPEFile.print(batteryVolts); GAPEFile.print(F(",")); // Battery voltage
+  GAPEFile.print(batteryVolts); // Battery voltage
   GAPEFile.println();
   // GAPEFile.close(); // force the buffer to empty
   GAPEFile.timestamp(T_WRITE, timestamp.year(),timestamp.month(), \
