@@ -4,7 +4,7 @@ A custom data logger designed to monitor bivalve mollusc heart rate, valve
 gape, and external temperature. Designed to be housed in a 3/4" schedule 40 
 PVC plumbing pipe along with an 18650-size Lithium-Ion battery cell. 
 
-![Revision E circuit board](Hardware/BivalveBit_RevE_hardware.jpg)
+![Revision E circuit board](Hardware/BivalveBit_figure_sm.jpg)
 
 Current hardware revision E (Fall 2021). See the Hardware folder for KiCad
 design files.
