@@ -10,10 +10,14 @@
  * Writes data to a standard microSD card
  
  Hardware design files for the main board were originally created in KiCad 5.1, 
- in the directory BivalveBit_RevE.
+ in the directory BivalveBit_RevE. The files have been updated to KiCad 6.0.1. 
  
  Hardware design files for the heart rate (and temperature) sensor board
  were created in Autodesk EAGLE 9.6, and are available in the 
- Mussel_heartrate_RevC_EAGLE directory.
+ Mussel_heartrate_RevC_EAGLE directory. A version imported into KiCad 6.0.1 is available
+ in the directory Mussel_heartrate_RevC_KiCad. 
+ 
+ Hardware design files in KiCad 6.0.1 for the Hall effect sensor board using an Allegro A1395
+ Hall effect sensor can be found in the directory Hall_effect_sensor_board_A139x. 
  
  
