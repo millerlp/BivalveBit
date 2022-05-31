@@ -1,0 +1,3 @@
+(sym_lib_table
+  (lib (name "Mussel_heartrate_RevC-eagle-import")(type "KiCad")(uri "${KIPRJMOD}/Mussel_heartrate_RevC-eagle-import.kicad_sym")(options "")(descr ""))
+)

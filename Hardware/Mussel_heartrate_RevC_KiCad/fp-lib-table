@@ -1,0 +1,3 @@
+(fp_lib_table
+  (lib (name "Mussel_heartrate_RevC")(type "KiCad")(uri "$(KIPRJMOD)/Mussel_heartrate_RevC.pretty")(options "")(descr ""))
+)
