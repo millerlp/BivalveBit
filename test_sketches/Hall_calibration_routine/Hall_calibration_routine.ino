@@ -332,7 +332,7 @@ void loop() {
         // run
         digitalWrite(TRIGGER, LOW); // Transition High to Low to trigger movement
         digitalWrite(GRNLED, LOW); // turn on
-        delay(1500); // Give dispenser time to move
+        delay(1800); // Give dispenser time to move, at least 1500milliseconds
         digitalWrite(TRIGGER, HIGH); // Reset Trigger line
         digitalWrite(GRNLED, HIGH); // turn off
         delay(10);
@@ -508,6 +508,7 @@ void readCommand() {
                 DateTime(year, month, day, hour, minute, second));  // Adjust the RTC date/time
             Serial.println(F("Date has been set."));
           }       // of if-then-else the date could be parsed
+          mainState = STATE_IDLE; // Return to idle
           break;  //
         /*******************************************************************************************
         ** Calibrate the Hall effect sensor
