@@ -332,7 +332,7 @@ void loop() {
         // run
         digitalWrite(TRIGGER, LOW); // Transition High to Low to trigger movement
         digitalWrite(GRNLED, LOW); // turn on
-        delay(1200); // Give dispenser time to move
+        delay(1500); // Give dispenser time to move
         digitalWrite(TRIGGER, HIGH); // Reset Trigger line
         digitalWrite(GRNLED, HIGH); // turn off
         delay(10);
@@ -508,7 +508,6 @@ void readCommand() {
                 DateTime(year, month, day, hour, minute, second));  // Adjust the RTC date/time
             Serial.println(F("Date has been set."));
           }       // of if-then-else the date could be parsed
-          mainState = STATE_IDLE; // Return to idle status
           break;  //
         /*******************************************************************************************
         ** Calibrate the Hall effect sensor
@@ -531,7 +530,7 @@ void readCommand() {
         default:
           Serial.println(F("Unknown command. Valid commands are:"));
           Serial.println(F("SETDATE yyyy-mm-dd hh:mm:ss"));
-          Serial.println(F("CALIB to start calibration"));
+          Serial.println(F("CALDATE yyyy-mm-dd hh:mm:ss"));
       }                // of switch statement to execute commands
       inputBytes = 0;  // reset the counter
     }                  // of if-then-else we've received full command
