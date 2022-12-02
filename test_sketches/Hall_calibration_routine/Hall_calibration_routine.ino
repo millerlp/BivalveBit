@@ -14,6 +14,13 @@
  *  
  *  Connect Syringe Trigger pin to MusselTracker pin PD2
  *  Connect Syringe GND to MusselTracker GND
+ *  On the KD200 dispenser, set the syringe DIA to 50.00mm
+ *  Set the Vol to 0.623ml
+ *  Set the Rate to 40 ml/m
+ *  
+ *  To start a calibration run, open the Serial Monitor and type CALIB and 
+ *  hit return. The program will step the syringe pump through the various 
+ *  distances, with the first distance makred as "0.0" mm. 
  *  
  *  If the device just slowly flashes red after startup, the real time clock
  *  needs to be reset. Open the serial monitor and enter the correct date and
@@ -295,6 +302,7 @@ void loop() {
       // Take an initial reading at zero
       while(distanceVal < moveLimit){
         digitalWrite(VREG_EN, HIGH); // set high to enable voltage regulator
+        delay(50);
         HallValue = readWakeHall(ANALOG_IN, HALL_SLEEP);    
         digitalWrite(VREG_EN, LOW); // set low to turn off after sampling
   
@@ -327,6 +335,7 @@ void loop() {
         delay(1200); // Give dispenser time to move
         digitalWrite(TRIGGER, HIGH); // Reset Trigger line
         digitalWrite(GRNLED, HIGH); // turn off
+        delay(10);
         // Increment the distanceVal
         distanceVal = distanceVal + moveDist;  // units mm
       }
