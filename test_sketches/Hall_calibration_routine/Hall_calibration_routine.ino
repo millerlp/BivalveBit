@@ -499,6 +499,7 @@ void readCommand() {
                 DateTime(year, month, day, hour, minute, second));  // Adjust the RTC date/time
             Serial.println(F("Date has been set."));
           }       // of if-then-else the date could be parsed
+          mainState = STATE_IDLE; // Return to idle status
           break;  //
         /*******************************************************************************************
         ** Calibrate the Hall effect sensor
@@ -521,7 +522,7 @@ void readCommand() {
         default:
           Serial.println(F("Unknown command. Valid commands are:"));
           Serial.println(F("SETDATE yyyy-mm-dd hh:mm:ss"));
-          Serial.println(F("CALDATE yyyy-mm-dd hh:mm:ss"));
+          Serial.println(F("CALIB to start calibration"));
       }                // of switch statement to execute commands
       inputBytes = 0;  // reset the counter
     }                  // of if-then-else we've received full command
