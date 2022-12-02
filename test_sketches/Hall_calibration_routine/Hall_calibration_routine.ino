@@ -352,6 +352,10 @@ void loop() {
 // The character array 'filename' was defined as a global array 
 // at the top of the sketch in the form "SN000_YYYYMMDD_HHMM_CALIB.csv"
 void initFileName(DateTime time1) {
+
+// Test if this works instead of the mess below
+// snprintf(gapefilename, 50, "SN000_%d%02d%02d_%02d%02d_CALIB.txt", y, mo, d, h, m);
+  
     // If there is a valid serialnumber, insert it into 
     // the file name in positions 0-4. 
     if (serialValid) {
