@@ -254,7 +254,7 @@ void setup() {
   }
   oldday1 = oldday2 = now.day(); // Store current day's value
   // Initialize data file
-  initGapeFileName(sd, GAPEFile, now, gapefilename, serialValid, serialNumber);
+//  initGapeFileName(sd, GAPEFile, now, gapefilename, serialValid, serialNumber);
   digitalWrite(REDLED, HIGH); // turn off
 //  Serial.print("Heart sample interval: "); Serial.print(heartMinute); Serial.println(" minutes");
 //  MCP7940Alarm1Minute(now); // Set RTC multifunction pin to alarm when new minute hits
@@ -353,87 +353,30 @@ void loop() {
 // at the top of the sketch in the form "SN000_YYYYMMDD_HHMM_CALIB.csv"
 void initFileName(DateTime time1) {
 
-// Test if this works instead of the mess below
-// snprintf(gapefilename, 50, "SN000_%d%02d%02d_%02d%02d_CALIB.txt", y, mo, d, h, m);
+// Modify the filename to hold the current serial number, date, and time
+  sprintf(gapefilename, "%5s_%d%02d%02d_%02d%02d_CALIB.csv", serialNumber, time1.year(),time1.month(),time1.day(),time1.hour(),time1.minute());
   
-    // If there is a valid serialnumber, insert it into 
-    // the file name in positions 0-4. 
-    if (serialValid) {
-      byte serCount = 0;
-      for (byte i = 0; i < 5; i++){
-        gapefilename[i] = serialNumber[serCount];
-        serCount++;
-      }
-    }
-    
-    char buf[5];
-    // integer to ascii function itoa(), supplied with numeric year value,
-    // a buffer to hold output, and the base for the conversion (base 10 here)
-//    itoa(time1.year(), buf, 10);
-//    // copy the ascii year into the filename array
-//    for (byte i = 6; i < 10; i++){
-//        gapefilename[i] = buf[i] + '0';
-//    }
-
-    gapefilename[8] = time1.year() / 10 + '0';
-    gapefilename[9] = time1.year() % 10 + '0';
-    
-    // Insert the month value
-    if (time1.month() < 10) {
-        gapefilename[10] = '0';
-        gapefilename[11] = time1.month() + '0';
-    } else if (time1.month() >= 10) {
-        gapefilename[10] = (time1.month() / 10) + '0';
-        gapefilename[11] = (time1.month() % 10) + '0';
-    }
-    // Insert the day value
-    if (time1.day() < 10) {
-        gapefilename[12] = '0';
-        gapefilename[13] = time1.day() + '0';
-    } else if (time1.day() >= 10) {
-        gapefilename[12] = (time1.day() / 10) + '0';
-        gapefilename[13] = (time1.day() % 10) + '0';
-    }
-    // Insert an underscore between date and time
-    gapefilename[14] = '_';
-    // Insert the hour
-    if (time1.hour() < 10) {
-        gapefilename[15] = '0';
-        gapefilename[16] = time1.hour() + '0';
-    } else if (time1.hour() >= 10) {
-        gapefilename[15] = (time1.hour() / 10) + '0';
-        gapefilename[16] = (time1.hour() % 10) + '0';
-    }
-    // Insert minutes
-    if (time1.minute() < 10) {
-        gapefilename[17] = '0';
-        gapefilename[18] = time1.minute() + '0';
-    } else if (time1.minute() >= 10) {
-        gapefilename[17] = (time1.minute() / 10) + '0';
-        gapefilename[18] = (time1.minute() % 10) + '0';
-    }
-
 
 //  for (uint16_t i = 0; i < 10; i++) {
 //    gapefilename[31] = i; // 1's digit
 //    // Check and see if this filename is already on the card
 //    // and if so, repeat the for loop with a value 1 digit higher
 //    // until you find a non-existent filename.
-//    if (!sd.exists(gapefilename)) {
-//      // when sd.exists() returns false, this block
-//      // of code will be executed to open the file
-//      if (!GAPEFile.open(gapefilename, O_RDWR | O_CREAT | O_AT_END)) {
-//        // If there is an error opening the file, notify the
-//        // user. Otherwise, the file is open and ready for writing
-//        // Turn both indicator LEDs on to indicate a failure
-//        // to create the log file
-//        digitalWrite(REDLED, !digitalRead(REDLED)); // Toggle error led 
-//        digitalWrite(GRNLED, !digitalRead(GRNLED)); // Toggle indicator led 
-//        delay(5);
-//      }
+    if (!sd.exists(gapefilename)) {
+      // when sd.exists() returns false, this block
+      // of code will be executed to open the file
+      if (!GAPEFile.open(gapefilename, O_RDWR | O_CREAT | O_AT_END)) {
+        // If there is an error opening the file, notify the
+        // user. Otherwise, the file is open and ready for writing
+        // Turn both indicator LEDs on to indicate a failure
+        // to create the log file
+        digitalWrite(REDLED, !digitalRead(REDLED)); // Toggle error led 
+        digitalWrite(GRNLED, !digitalRead(GRNLED)); // Toggle indicator led 
+        delay(5);
+      }
 //      break; // Break out of the for loop when the statement if(!sd.exists(gapefilename))
-//      // is finally false (i.e. you found a new file name to use).
-//    } // end of if(!sd.exists())
+      // is finally false (i.e. you found a new file name to use).
+    } // end of if(!sd.exists())
 //
 //  } // end of file-naming for loop
   //------------------------------------------------------------
@@ -448,8 +391,8 @@ void initFileName(DateTime time1) {
   GAPEFile.timestamp(T_ACCESS, time1.year(), time1.month(), time1.day(), 
       time1.hour(), time1.minute(), time1.second());
   GAPEFile.close(); // force the data to be written to the file by closing it
-  Serial.print(F("Ouput file: "));
-  Serial.println(gapefilename);
+//  Serial.print(F("Ouput file: "));
+//  Serial.println(gapefilename);
 } // end of initFileName function
 
 
@@ -563,7 +506,11 @@ void readCommand() {
         case Calib:  // Calibrate the Hall sensor
             Serial.println(F("Starting Hall sensor calibration"));
             now = MCP7940.now();
-            initFileName(now);
+            if (TrialNum < 1){
+              initFileName(now);  
+            }
+            Serial.print(F("Data saved in "));
+            Serial.println(gapefilename);
             delay(10);
             mainState = STATE_CALIB;  // Change the mainState to start the calibration
           break;
