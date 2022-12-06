@@ -20,7 +20,10 @@
  *  
  *  To start a calibration run, open the Serial Monitor and type CALIB and 
  *  hit return. The program will step the syringe pump through the various 
- *  distances, with the first distance makred as "0.0" mm. 
+ *  distances, with the first distance marked as "0.0" mm. It will stop after 
+ *  moving about 12mm, at which point you can release the carriage and return
+ *  it to a starting point. Another run can be started by typing CALIB again,
+ *  and the new run will written into the same file as the previous run. 
  *  
  *  If the device just slowly flashes red after startup, the real time clock
  *  needs to be reset. Open the serial monitor and enter the correct date and
