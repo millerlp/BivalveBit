@@ -661,7 +661,7 @@ void setupVCNL4040(){
   vcnl4040.setProximityHighResolution(true); // set to 16bit resolution (vs. 12bit)
   // Setting VCNL4040_LED_DUTY_1_40 gives shortest proximity measurement time (about 4.85ms)
   vcnl4040.setProximityLEDDutyCycle(VCNL4040_LED_DUTY_1_40); // 1_40, 1_80,1_160,1_320
-  vcnl4040.setProximityLEDCurrent(VCNL4040_LED_CURRENT_50MA); // 50,75,100,120,140,160,180,200
+  vcnl4040.setProximityLEDCurrent(VCNL4040_LED_CURRENT_200MA); // 50,75,100,120,140,160,180,200
   // Setting VCNL4040_PROXIMITY_INTEGRATION_TIME_1T gives the shortest pulse (lowest LED output)
   // in combination with the LED_CURRENT setting above. A longer integration time like
   // VCNL4040_PROXIMITY_INTEGRATION_TIME_8T raises the pulse length (higher LED output) in
