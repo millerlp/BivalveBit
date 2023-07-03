@@ -238,6 +238,7 @@ void setup() {
 //    oled.println("Heart sensor fail");
   } else {
 //    oled.println("Heart sensor on");
+    Serial.println("VCNL4040 found");
     digitalWrite(GRNLED,LOW);
     delay(100);
     digitalWrite(GRNLED,HIGH);
