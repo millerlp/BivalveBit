@@ -1,6 +1,11 @@
 /* BivalveBit_MAX30102_test.ino
  *  
  *  Used to test for a working MAX30102 heart sensor (or MAX30101)
+ *  Note that a MAX30102 RevB sensor board will probably cause a 
+ *  brownout on the BivalveBit if only powered with a 3V3 FTDI USB
+ *  adapter. You either need to include a Li-Ion battery plugged
+ *  into the board, or use a 5V FTDI-USB adapter to power the
+ *  BivalveBit for testing. 
  * 
  */
 
@@ -16,7 +21,7 @@ MAX30105 max3010x;
 // sensor configurations
 byte ledMode = 2; //Options: 1 = Red only, 2 = Red + IR, 3 = Red + IR + Green. Only use 2
 byte REDledBrightness = 1; // low value of 0 shuts it off, 1 is barely on
-byte IRledBrightness = 60;
+byte IRledBrightness = 60;  // Starting value around 60 is probably reasonable for bivalves
 byte sampleAverage = 1; //Options: 1, 2, 4, 8, 16, 32, but only use 1 or 2. The others are too slow
 int pulseWidth = 215; //Options: 69, 118, 215, 411, units microseconds. Applies to all active LEDs. Recommend 215
 // For 118us, max sampleRate = 1000; for 215us, max sampleRate = 800, for 411us, max sampleRate = 400
@@ -59,26 +64,42 @@ uint16_t heartBuffer[240] = {0}; //
 
 void setup() {
   Serial.begin(57600);
-  Serial.println("Hello");
+  Serial.println("Hello");delay(10);
+  pinMode(GRNLED, OUTPUT);
+  pinMode(REDLED, OUTPUT);
+  digitalWrite(GRNLED, HIGH); // turn off
+  digitalWrite(REDLED, HIGH); // turn off
+  
+  for (int i = 0; i<5; i++){
+    digitalWrite(GRNLED, LOW);
+    delay(100);
+    digitalWrite(GRNLED, HIGH);
+    delay(100);
+  }
   analogReference(EXTERNAL);
-  setUnusedPins(); // in BivalveBit_lib
-  disableUnusedPeripherals(); // in BivalveBit_lib
+//  setUnusedPins(); // in BivalveBit_lib
+//  disableUnusedPeripherals(); // in BivalveBit_lib
   pinMode(VREG_EN, OUTPUT);   // Voltage regulator pin
+  Serial.println(F("Engaging VREG"));delay(10);
   digitalWrite(VREG_EN, HIGH); // set low to turn off, high to turn on (~150usec to wake)
-  pinMode(20, INPUT_PULLUP); // pin PF0, attached to RTC multi-function pin
+  Serial.println(F("VREG engaged"));delay(100);
+
+//  pinMode(20, INPUT_PULLUP); // pin PF0, attached to RTC multi-function pin
 
   // SD card initialization
-  pinMode(SD_CHIP_SELECT, OUTPUT); // SD card chip select pin
+//  pinMode(SD_CHIP_SELECT, OUTPUT); // SD card chip select pin
 
-  Wire.begin();
+//  Wire.begin();
 
   if (max3010x.begin(Wire, I2C_SPEED_STANDARD)) //Use default I2C port, 100kHz speed
   {
     // Quick green flash to show that the heart sensor was found
+    Serial.println(F("MAX heart sensor initialized"));
     digitalWrite(GRNLED,LOW); // set low to turn on
     delay(250);
     digitalWrite(GRNLED,HIGH); // set high to turn off
   } else {
+    Serial.println(F("Did not find MAX heart sensor"));
     digitalWrite(REDLED,LOW); // set low to turn on, leave on due to the error
 //    delay(250);
 //    digitalWrite(REDLED,HIGH); // set high to turn off
