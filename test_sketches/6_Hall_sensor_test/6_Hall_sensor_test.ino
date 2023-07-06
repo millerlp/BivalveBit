@@ -58,7 +58,7 @@ void loop() {
   digitalWrite(HALL_SLEEP, LOW); // put hall sensor to sleep
   Serial.println(HallValue);
   digitalWrite(GRNLED,!digitalRead(GRNLED));
-  delay(200);
+  delay(100);
 
 
 }
