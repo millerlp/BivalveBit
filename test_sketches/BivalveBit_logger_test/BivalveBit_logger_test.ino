@@ -29,6 +29,7 @@ char filename[] = "YYYYMMDD_HHMM_00_SN000.csv";
  * Create VCNL4040 object
 ********************************************************* */
 Adafruit_VCNL4040 vcnl4040 = Adafruit_VCNL4040();
+bool VCNLflag = false; // Used to track if heart sensor initialized
 
 /**************************************************
  *  Create TMP117 temperature sensor object
@@ -150,7 +151,7 @@ void setup() {
     
     return;
   }
-  Serial.println("card initialized.");
+  Serial.println("SD card initialized.");
   oled.println("SD card found");
   digitalWrite(GRNLED,LOW);
   delay(100);
@@ -164,6 +165,31 @@ void setup() {
   
   oled.home();
   oled.clear();
+  //-----------------------------------------------------------------
+  // Initialize Hall sensor
+  digitalWrite(HALL_SLEEP, HIGH); // turn on hall effect sensor
+  delayMicroseconds(50);
+  HallValue = readHall(ANALOG_IN); // Function in BivalveBit_lib 
+  digitalWrite(HALL_SLEEP, LOW); // put hall sensor to sleep
+  if ( (HallValue > 0) & (HallValue < 1023) ) {
+    Serial.print("Hall sensor: ");
+    Serial.println(HallValue);
+    oled.print("Hall: ");
+    oled.println(HallValue);
+    digitalWrite(GRNLED, LOW);
+    delay(100);
+    digitalWrite(GRNLED, HIGH);
+    delay(100);
+  } else {
+    Serial.println("Hall sensor problem");
+    oled.println("Hall sensor fail");
+    digitalWrite(REDLED, LOW);
+    delay(200);
+    digitalWrite(REDLED, HIGH);
+    delay(100);
+  }
+  delay(500);
+  
   //------------------------------------------------------------------
   // Start up VCNL4040 proximity sensor (heart sensor)
   if (!vcnl4040.begin()) {
@@ -172,7 +198,7 @@ void setup() {
     delay(500);
     digitalWrite(REDLED, HIGH);
     delay(100);
-
+    VCNLflag = false;
     oled.println("Heart sensor fail");
   } else {
     oled.println("Heart sensor on");
@@ -180,20 +206,23 @@ void setup() {
     delay(100);
     digitalWrite(GRNLED,HIGH);
     delay(100);
+    VCNLflag = true;
   }
-  vcnl4040.enableAmbientLight(false);
-  vcnl4040.enableWhiteLight(false);
-  vcnl4040.enableProximity(true);
-  vcnl4040.setProximityHighResolution(true);
-  // Setting VCNL4040_LED_DUTY_1_40 gives shortest proximity measurement time (about 4.85ms)
-  vcnl4040.setProximityLEDDutyCycle(VCNL4040_LED_DUTY_1_40); // 1_40, 1_80,1_160,1_320
-  vcnl4040.setProximityLEDCurrent(VCNL4040_LED_CURRENT_50MA); // 50,75,100,120,140,160,180,200
-  // Setting VCNL4040_PROXIMITY_INTEGRATION_TIME_1T gives the shortest pulse (lowest LED output)
-  // in combination with the LED_CURRENT setting above. A longer integration time like
-  // VCNL4040_PROXIMITY_INTEGRATION_TIME_8T raises the pulse length (higher LED output) in
-  // combination with the LED_CURRENT setting.
-  vcnl4040.setProximityIntegrationTime(VCNL4040_PROXIMITY_INTEGRATION_TIME_1T); // 1T,1_5T,2T,2_5T,3T,3_5T,4T,8T
-  delay(200);
+  if (VCNLflag){
+    vcnl4040.enableAmbientLight(false);
+    vcnl4040.enableWhiteLight(false);
+    vcnl4040.enableProximity(true);
+    vcnl4040.setProximityHighResolution(true);
+    // Setting VCNL4040_LED_DUTY_1_40 gives shortest proximity measurement time (about 4.85ms)
+    vcnl4040.setProximityLEDDutyCycle(VCNL4040_LED_DUTY_1_40); // 1_40, 1_80,1_160,1_320
+    vcnl4040.setProximityLEDCurrent(VCNL4040_LED_CURRENT_50MA); // 50,75,100,120,140,160,180,200
+    // Setting VCNL4040_PROXIMITY_INTEGRATION_TIME_1T gives the shortest pulse (lowest LED output)
+    // in combination with the LED_CURRENT setting above. A longer integration time like
+    // VCNL4040_PROXIMITY_INTEGRATION_TIME_8T raises the pulse length (higher LED output) in
+    // combination with the LED_CURRENT setting.
+    vcnl4040.setProximityIntegrationTime(VCNL4040_PROXIMITY_INTEGRATION_TIME_1T); // 1T,1_5T,2T,2_5T,3T,3_5T,4T,8T
+    delay(200);
+  }
   //----------------------------------------------------
 
   //--------------------------------------------------------------------------
@@ -207,7 +236,7 @@ void setup() {
       digitalWrite(GRNLED, HIGH);
       delay(100);
     }  else {
-      Serial.println("Device failed to setup- Freezing code.");
+      Serial.println("TMP117 failed to setup.");
       oled.println("Temp sensor fail");
       
       digitalWrite(REDLED,LOW);
@@ -217,29 +246,7 @@ void setup() {
     }
     delay(400);
     //-------------------------------------------------------------------
-    // Initialize Hall sensor
-    digitalWrite(HALL_SLEEP, HIGH); // turn on hall effect sensor
-    delayMicroseconds(50);
-    HallValue = readHall(ANALOG_IN); // Function in BivalveBit_lib 
-    digitalWrite(HALL_SLEEP, LOW); // put hall sensor to sleep
-    if ( (HallValue > 0) & (HallValue < 1023) ) {
-      Serial.print("Hall sensor: ");
-      Serial.println(HallValue);
-      oled.print("Hall: ");
-      oled.println(HallValue);
-      digitalWrite(GRNLED, LOW);
-      delay(100);
-      digitalWrite(GRNLED, HIGH);
-      delay(100);
-    } else {
-      Serial.println("Hall sensor problem");
-      oled.println("Hall sensor fail");
-      digitalWrite(REDLED, LOW);
-      delay(200);
-      digitalWrite(REDLED, HIGH);
-      delay(100);
-    }
-    delay(500);
+
 
     //------------------------------------------------------------
     // Battery voltage circuit test
